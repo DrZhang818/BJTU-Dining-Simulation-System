@@ -39,3 +39,23 @@
 
 # debug information files
 *.dwo
+
+# 编译生成文件夹
+/build/
+/out/
+/bin/
+
+# VS Code 配置
+.vscode/
+*.code-workspace
+
+# Qt 生成文件
+*.user
+/moc_*.cpp
+/ui_*.h
+/qrc_*.cpp
+*.moc
+
+# 临时文件
+*.log
+*.tmp
