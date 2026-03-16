@@ -1,9 +1,9 @@
 # BDSS: BJTU Dining Simulation System 
 # 北京交通大学就餐仿真系统
 
-[![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)](https://en.cppreference.com/w/cpp/17)
+[![Language](https://img.shields.io/badge/Language-C%2B%2B23-red.svg)](https://en.cppreference.com/w/cpp/23)
 [![Framework](https://img.shields.io/badge/Framework-Qt%206-green.svg)](https://www.qt.io/)
-[![Build](https://img.shields.io/badge/Build-CMake%20%2F%20Make-brightgreen.svg)](https://cmake.org/)
+[![Build](https://img.shields.io/badge/Build-CMake%203.20%2B-brightgreen.svg)](https://cmake.org/)
 
 ## 📝 项目简介 (Project Overview)
 本项目是北京交通大学《软件综合实训》课程的立项课题。系统通过**离散事件仿真 (Discrete Event Simulation)** 技术，模拟大学食堂在高峰时段的人流、排队及就餐过程。
@@ -17,9 +17,9 @@
 - **数据分析**: 仿真结束后自动导出 CSV 报表，分析平均等待时间与资源利用率。
 
 ## 🛠️ 技术栈 (Tech Stack)
-- **语言 (Language)**: C++ 17
+- **语言 (Language)**: C++ 23
 - **框架 (Framework)**: Qt 6 (Widgets, Charts)
-- **构建工具 (Build System)**: CMake 3.16+, GNU Make
+- **构建工具 (Build System)**: CMake 3.20+, GNU Make
 - **开发环境 (IDE)**: VS Code (Linux / SSH Remote)
 - **版本控制 (VCS)**: Git / GitHub
 
@@ -49,7 +49,7 @@ sudo apt install build-essential cmake qt6-base-dev qt6-charts-dev qt6-tools-dev
 在项目根目录下执行以下指令进行编译：
 ```bash
 mkdir -p build && cd build
-cmake ..
+cmake .. -DCMAKE_CXX_COMPILER=g++-13
 make -j$(nproc)
 ```
 

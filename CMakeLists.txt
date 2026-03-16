@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.16)
 # 2. 项目名称和版本
 project(CanteenSim VERSION 1.0 LANGUAGES CXX)
 
-# 3. 指定 C++ 标准 (推荐 C++17)
-set(CMAKE_CXX_STANDARD 17)
+# 3. 指定 C++ 标准 (这里我们用 C++23，因为 Qt6 支持最新的 C++ 标准)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 4. 自动处理 Qt 的核心机制 (关键！)
