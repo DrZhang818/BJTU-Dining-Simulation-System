@@ -25,15 +25,39 @@
 
 ## 📂 项目结构 (Project Structure)
 ```text
-.
-├── CMakeLists.txt          # 项目构建配置文件
-├── main.cpp                # 程序入口
-├── src/                    # 源代码 (.cpp)
-├── include/                # 头文件 (.h)
-├── ui/                     # Qt Designer 界面文件 (.ui)
-├── docs/                   # 实训报告、设计文档及原型图
-├── resources/              # 图标、配置数据等资源文件
-└── build/                  # 编译输出目录 (Git已忽略)
+BDSS/
+├── CMakeLists.txt
+├── main.cpp                        # 程序的绝对入口
+├── resources/
+│   └── default_config.json         # [模块1] 默认配置文件
+├── ui/
+│   └── MainWindow.ui               # [模块5] Qt Designer 界面文件
+├── include/
+│   ├── core/                       # 核心业务逻辑层 (纯C++)
+│   │   ├── Config.h                # [模块1] 配置数据结构
+│   │   ├── Student.h               #[模块3.1] 学生实体类
+│   │   ├── Window.h                # [模块3.2] 窗口队列实体类
+│   │   ├── Canteen.h               # [模块3.3/4] 餐桌矩阵与空间管理类
+│   │   └── SimulationEngine.h      # [模块2] 核心驱动引擎
+│   ├── utils/                      # 工具层
+│   │   ├── RandomGenerator.h       #[模块3.1] 随机数生成工具 (封装正态/泊松分布)
+│   │   └── StatisticsLogger.h      # [模块6] 数据记录与 CSV 导出
+│   └── gui/                        # 可视化与交互层 (依赖 Qt)
+│       ├── MainWindow.h            # [模块5] 主窗口控制器
+│       └── RenderWidget.h          # [模块5] 负责绘制动画的自定义画布组件
+└── src/
+    ├── core/
+    │   ├── Config.cpp
+    │   ├── Student.cpp
+    │   ├── Window.cpp
+    │   ├── Canteen.cpp
+    │   └── SimulationEngine.cpp
+    ├── utils/
+    │   ├── RandomGenerator.cpp
+    │   └── StatisticsLogger.cpp
+    └── gui/
+        ├── MainWindow.cpp
+        └── RenderWidget.cpp
 ```
 
 ## 🔨 快速开始 (Quick Start)
