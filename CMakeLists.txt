@@ -1,33 +1,39 @@
-# 1. 指定 CMake 最低版本要求
-cmake_minimum_required(VERSION 3.16)
+# 1. 建议将最低版本提升到 3.20 以支持 C++23
+cmake_minimum_required(VERSION 3.20)
 
-# 2. 项目名称和版本
+# 2. 项目名称
 project(CanteenSim VERSION 1.0 LANGUAGES CXX)
 
-# 3. 指定 C++ 标准 (这里我们用 C++23，因为 Qt6 支持最新的 C++ 标准)
+# 3. 指定 C++ 标准
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 4. 自动处理 Qt 的核心机制 (关键！)
-set(CMAKE_AUTOMOC ON) # 处理 信号与槽 (Signals & Slots)
-set(CMAKE_AUTOUIC ON) # 处理 .ui 界面文件
-set(CMAKE_AUTORCC ON) # 处理 资源文件 (.qrc)
+# --- 针对 Windows 的特别优化：处理 DLL 文件 ---
+# 在 Windows 上运行 Qt 程序需要 .dll 文件，这段代码能自动把 dll 复制到 exe 所在目录
+if(WIN32)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
-# 5. 寻找 Qt 库 (由于你用 Linux 系统安装，通常能自动找到)
+# 4. 自动处理 Qt 核心机制
+set(CMAKE_AUTOMOC ON) 
+set(CMAKE_AUTOUIC ON) 
+set(CMAKE_AUTORCC ON) 
+
+# 5. 寻找 Qt 库
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts)
 
-# 6. 包含头文件目录
-include_directories(include)
-
-# 7. 收集源文件 (把你的源文件都列在这)
+# 6. 收集源文件 (必须先定义 SOURCES 变量)
 set(SOURCES
     main.cpp
     src/StudentManager.cpp
     src/CanteenMap.cpp
 )
 
-# 8. 生成可执行文件
+# 7. 生成可执行文件 (这步是“诞生”，必须放在前面！)
 add_executable(CanteenSim ${SOURCES})
+
+# 8. 包含头文件目录 (现在 CanteenSim 已经存在了，可以给它配置路径了)
+target_include_directories(CanteenSim PRIVATE include)
 
 # 9. 链接 Qt 库
 target_link_libraries(CanteenSim PRIVATE Qt6::Widgets Qt6::Charts)
