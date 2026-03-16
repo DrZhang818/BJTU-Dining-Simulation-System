@@ -38,12 +38,45 @@
 
 ## 🔨 快速开始 (Quick Start)
 
+好的，为了让 Windows 端的组员能够顺利上手，我们需要在 README 中提供清晰、分步骤的安装说明。Windows 的配置不像 Linux 一行命令就能解决，通常涉及安装包的下载和环境变量的配置。
+
+以下是建议补充到 README 中的 Windows 环境依赖部分，采用了更符合 Windows 用户习惯的描述方式：
+
+---
+
 ### 1. 环境依赖 (Dependencies)
-确保你的 Linux 系统已安装以下基础开发包：
+
+#### 🐧 Linux (Ubuntu/Debian)
+执行以下指令安装基础开发包：
 ```bash
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test # 获取 GCC 13
 sudo apt update
-sudo apt install build-essential cmake qt6-base-dev qt6-charts-dev qt6-tools-dev-tools
+sudo apt install g++-13 cmake qt6-base-dev qt6-charts-dev qt6-tools-dev-tools
 ```
+
+#### 🪟 Windows
+Windows 建议使用 **Visual Studio 2022** 或 **VS Code + MinGW**。
+
+1.  **编译器 & IDE**:
+    *   下载并安装 [Visual Studio 2022 Community](https://visualstudio.microsoft.com/zh-hans/vs/)。
+    *   安装时务必勾选 **“使用 C++ 的桌面开发”**（确保包含最新的 MSVC 编译器以支持 C++23）。
+2.  **Qt 6 框架**:
+    *   通过 [Qt Online Installer](https://www.qt.io/download-open-source) 安装。
+    *   选择组件时，勾选 `Qt 6.x` 下的 `MSVC 2022 64-bit` 以及 `Additional Libraries` 中的 **`Qt Charts`**。
+3.  **CMake**:
+    *   下载并安装 [CMake](https://cmake.org/download/) (3.20 或更高版本)，安装时选择 "Add CMake to the system PATH"。
+4.  **VS Code 插件** (推荐):
+    *   `C/C++ Extension Pack`
+    *   `CMake Tools`
+    *   `Qt Allman Style` (可选，用于格式化)
+
+> **Windows 编译注意事项**:
+> 如果 CMake 提示找不到 Qt6，请在 VS Code 的 `settings.json` 中配置 `cmake.configureSettings`，手动指定 Qt 的 CMake 路径：
+> ```json
+> "cmake.configureSettings": {
+>     "CMAKE_PREFIX_PATH": "C:/Qt/6.x.x/msvc2022_64/lib/cmake"
+> }
+> ```
 
 ### 2. 编译项目 (Build)
 在项目根目录下执行以下指令进行编译：
