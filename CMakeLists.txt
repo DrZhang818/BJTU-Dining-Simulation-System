@@ -25,8 +25,8 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Charts)
 # 6. 收集源文件 (必须先定义 SOURCES 变量)
 set(SOURCES
     main.cpp
-    src/StudentManager.cpp
-    src/CanteenMap.cpp
+    src/core/Config.cpp
+    src/core/Student.cpp
 )
 
 # 7. 生成可执行文件 (这步是“诞生”，必须放在前面！)
