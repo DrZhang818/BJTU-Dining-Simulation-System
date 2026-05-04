@@ -97,6 +97,17 @@ std::vector<int> SimulationEngine::getWindowQueueLengths() const {
     return result;
 }
 
+std::vector<double> SimulationEngine::getWindowEfficiencies() const {
+    std::vector<double> result;
+    result.reserve(windows_.size());
+
+    for (const auto& window : windows_) {
+        result.push_back(window.getEfficiency());
+    }
+
+    return result;
+}
+
 void SimulationEngine::generateStudents() {
     const int newStudents = bdss::utils::RandomGenerator::getPoisson(currentArrivalLambdaPerSecond());
 

@@ -1,4 +1,6 @@
 #include "core/Window.h"
+#include <algorithm>
+#include <array>
 
 namespace bdss::core {
 

@@ -27,6 +27,14 @@ public:
 
     std::vector<int> getWindowQueueLengths() const;
 
+    int getTotalSimulationTime() const { return config_.totalSimulationTime; }
+    int getTotalSeats() const { return canteen_.getTotalSeats(); }
+    double getSeatUtilization() const { return canteen_.getSeatUtilization(); }
+
+    const Canteen& getCanteen() const { return canteen_; }
+
+    std::vector<double> getWindowEfficiencies() const;
+
     const bdss::utils::StatisticsLogger& getStatistics() const { return logger_; }
 
 private:
