@@ -1,24 +1,23 @@
-#include <QApplication>
-#include <QMessageBox>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QWidget>
+#include "core/Config.h"
+#include "core/SimulationEngine.h"
 
-int main(int argc, char* argv[]) {
-    QApplication app(argc, argv);
+#include <exception>
+#include <iostream>
 
-    QWidget window;
-    window.setWindowTitle("BJTU Dining Simulation System");
-    window.resize(400, 300);
+int main() {
+    try {
+        const auto config = bdss::core::Config::loadFromFile("resources/default_config.json");
 
-    QVBoxLayout* layout = new QVBoxLayout(&window);
-    QPushButton* btn = new QPushButton("Start Simulation", &window);
-    layout->addWidget(btn);
+        bdss::core::SimulationEngine engine(config);
+        engine.run();
 
-    QObject::connect(btn, &QPushButton::clicked, [&]() {
-        QMessageBox::information(&window, "Success", "Qt6 application is running successfully!");
-    });
+        engine.getStatistics().printSummary(std::cout);
+        engine.getStatistics().exportCSV("simulation_log.csv");
 
-    window.show();
-    return app.exec();
+        std::cout << "CSV exported to simulation_log.csv" << '\n';
+        return 0;
+    } catch (const std::exception& ex) {
+        std::cerr << "Program failed: " << ex.what() << '\n';
+        return 1;
+    }
 }

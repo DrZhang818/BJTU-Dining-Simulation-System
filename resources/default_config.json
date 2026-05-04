@@ -1,0 +1,22 @@
+{
+  "windowCount": 5,
+  "tableRows": 10,
+  "tableCols": 10,
+  "totalSimulationTime": 3600,
+
+  "arrivalRate": 5.0,
+  "avgServiceTime": 20,
+  "avgDiningTime": 900,
+
+  "serviceStddev": 5.0,
+  "diningStddev": 180.0,
+
+  "arrivalPattern": "RushHour",
+  "windowEfficiency": "Variable",
+
+  "rushHourStart": 900,
+  "rushHourEnd": 1800,
+  "rushHourMultiplier": 2.0,
+
+  "randomSeed": 42
+}
