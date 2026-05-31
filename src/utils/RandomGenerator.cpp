@@ -2,52 +2,49 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace bdss::utils {
 
-std::mt19937& RandomGenerator::getEngine() {
-    static thread_local std::mt19937 engine(42);
-    return engine;
+std::mt19937& RandomGenerator::engine() {
+    static std::mt19937 instance{42U};
+    return instance;
 }
 
-void RandomGenerator::setSeed(unsigned int seed) {
-    getEngine().seed(seed);
+void RandomGenerator::setSeed(std::uint32_t seed) {
+    engine().seed(seed);
 }
 
-int RandomGenerator::getPoisson(double lambda) {
-    if (lambda <= 0.0) {
+int RandomGenerator::getPoisson(double mean) {
+    if (mean <= 0.0) {
         return 0;
     }
-
-    std::poisson_distribution<int> distribution(lambda);
-    return distribution(getEngine());
+    std::poisson_distribution<int> dist(mean);
+    return dist(engine());
 }
 
-double RandomGenerator::getNormal(double mean, double stddev) {
+int RandomGenerator::getNormalInt(double mean, double stddev, int minimum) {
     if (stddev <= 0.0) {
-        return mean;
+        return std::max(minimum, static_cast<int>(std::lround(mean)));
     }
-
-    std::normal_distribution<double> distribution(mean, stddev);
-    return std::max(0.0, distribution(getEngine()));
+    std::normal_distribution<double> dist(mean, stddev);
+    return std::max(minimum, static_cast<int>(std::lround(dist(engine()))));
 }
 
-int RandomGenerator::getUniformInt(int min, int max) {
-    if (min > max) {
-        std::swap(min, max);
+int RandomGenerator::getUniformInt(int minInclusive, int maxInclusive) {
+    if (minInclusive > maxInclusive) {
+        throw std::invalid_argument("invalid uniform int range");
     }
-
-    std::uniform_int_distribution<int> distribution(min, max);
-    return distribution(getEngine());
+    std::uniform_int_distribution<int> dist(minInclusive, maxInclusive);
+    return dist(engine());
 }
 
-double RandomGenerator::getUniformReal(double min, double max) {
-    if (min > max) {
-        std::swap(min, max);
+double RandomGenerator::getUniformDouble(double minInclusive, double maxInclusive) {
+    if (minInclusive > maxInclusive) {
+        throw std::invalid_argument("invalid uniform double range");
     }
-
-    std::uniform_real_distribution<double> distribution(min, max);
-    return distribution(getEngine());
+    std::uniform_real_distribution<double> dist(minInclusive, maxInclusive);
+    return dist(engine());
 }
 
 } // namespace bdss::utils

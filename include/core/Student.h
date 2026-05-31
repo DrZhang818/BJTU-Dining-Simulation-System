@@ -1,62 +1,75 @@
 #pragma once
 
-#include <optional>
+#include <iosfwd>
 #include <string>
 
 namespace bdss::core {
 
 enum class StudentState {
-    Arrived,        // 刚到达食堂
-    Queuing,        // 正在窗口排队
-    Serving,        // 正在窗口打饭
-    WaitingForSeat, // 打完饭，正在等待空座
-    Dining,         // 正在就餐
-    Left            // 已离开食堂
+    Arrived,
+    Queuing,
+    Serving,
+    WaitingForSeat,
+    Dining,
+    Left
 };
+
+std::string toString(StudentState state);
 
 class Student {
 public:
-    Student(int id, int arrivalTime, int targetServiceTime, int targetDiningTime);
+    Student(int id, int arrivalTime, int serviceTime, int diningTime);
 
-    void startQueuing(int time);
-    void startServing(int time);
-    void finishServiceAndWaitForSeat(int time);
-    void startDining(int time);
-    void finishDiningAndLeave(int time);
+    int getId() const noexcept;
+    StudentState getState() const noexcept;
 
-    int getId() const { return id_; }
-    StudentState getState() const { return state_; }
+    int getArrivalTime() const noexcept;
+    int getQueueStartTime() const noexcept;
+    int getServiceStartTime() const noexcept;
+    int getServiceEndTime() const noexcept;
+    int getDiningStartTime() const noexcept;
+    int getLeaveTime() const noexcept;
 
-    int getArrivalTime() const { return arrivalTime_; }
-    int getRemainingServiceTime() const { return remainingServiceTime_; }
-    int getRemainingDiningTime() const { return remainingDiningTime_; }
+    int getServiceTime() const noexcept;
+    int getDiningTime() const noexcept;
+    int getRemainingServiceTime() const noexcept;
+    int getRemainingDiningTime() const noexcept;
+    int getSeatRow() const noexcept;
+    int getSeatCol() const noexcept;
 
-    void decrementServiceTime();
-    void decrementDiningTime();
+    void setServiceTime(int seconds);
+    void startQueuing(int now);
+    void startServing(int now);
+    bool advanceServiceOneSecond();
+    void finishServiceAndWaitForSeat(int now);
+    void startDining(int now, int row, int col);
+    bool advanceDiningOneSecond();
+    void finishDiningAndLeave(int now);
 
-    int getWaitTime() const;        // 从到达到开始打饭的等待时间
-    int getSeatWaitTime() const;    // 从打完饭到开始就餐的等待时间
-    int getServiceTime() const;     // 实际打饭耗时
-    int getTotalTime() const;       // 从到达到离开的总时间
-
-    std::string toString() const;
-    static std::string stateToString(StudentState state);
+    int getQueueWaitTime() const noexcept;
+    int getSeatWaitTime() const noexcept;
+    int getActualServiceTime() const noexcept;
+    int getActualDiningTime() const noexcept;
+    int getTotalTime() const noexcept;
 
 private:
     int id_;
-    StudentState state_;
-
-    int targetServiceTime_;
-    int targetDiningTime_;
+    int arrivalTime_;
+    int serviceTime_;
+    int diningTime_;
     int remainingServiceTime_;
     int remainingDiningTime_;
+    StudentState state_ = StudentState::Arrived;
 
-    int arrivalTime_;
-    std::optional<int> queueStartTime_;
-    std::optional<int> serviceStartTime_;
-    std::optional<int> serviceEndTime_;
-    std::optional<int> diningStartTime_;
-    std::optional<int> leaveTime_;
+    int queueStartTime_ = -1;
+    int serviceStartTime_ = -1;
+    int serviceEndTime_ = -1;
+    int diningStartTime_ = -1;
+    int leaveTime_ = -1;
+    int seatRow_ = -1;
+    int seatCol_ = -1;
 };
+
+std::ostream& operator<<(std::ostream& os, const Student& student);
 
 } // namespace bdss::core

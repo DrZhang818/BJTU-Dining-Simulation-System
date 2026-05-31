@@ -1,0 +1,13 @@
+BDSS version 2.0.0
+Config: windowCount=5, tableRows=10, tableCols=10, totalSimulationTime=3600, arrivalRate=5 students/min, avgServiceTime=20, avgDiningTime=900, serviceStddev=5, diningStddev=180, arrivalPattern=RushHour, windowEfficiency=Variable, rushHourStart=900, rushHourEnd=1800, rushHourMultiplier=2, randomSeed=42
+========== BDSS Simulation Summary ==========
+Finished students: 373
+Max queue length: 6
+Max waiting-for-seat count: 50
+Average queue wait time: 1.9651 seconds
+Average seat wait time: 145.5925 seconds
+Average service time: 21.6944 seconds
+Average total time in canteen: 1060.8365 seconds
+Average seat utilization: 68.7678%
+============================================
+CSV exported to evidence/simulation_log.csv

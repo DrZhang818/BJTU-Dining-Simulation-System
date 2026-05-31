@@ -17,6 +17,5 @@
   "rushHourStart": 900,
   "rushHourEnd": 1800,
   "rushHourMultiplier": 2.0,
-
   "randomSeed": 42
 }

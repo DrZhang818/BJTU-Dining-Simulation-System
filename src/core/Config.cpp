@@ -1,144 +1,201 @@
 #include "core/Config.h"
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
-#include <iostream>
+#include <iomanip>
+#include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace bdss::core {
 namespace {
 
-std::string readAllText(const std::filesystem::path& filePath) {
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
-        return {};
+std::string readAll(const std::filesystem::path& path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("cannot open config file: " + path.string());
     }
-
     std::ostringstream buffer;
-    buffer << file.rdbuf();
+    buffer << input.rdbuf();
     return buffer.str();
 }
 
-double readNumber(const std::string& text, const std::string& key, double defaultValue) {
-    const std::string token = "\"" + key + "\"";
-    const auto keyPos = text.find(token);
-    if (keyPos == std::string::npos) {
-        return defaultValue;
+std::string trim(std::string value) {
+    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    });
+    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    }).base();
+    if (first >= last) {
+        return {};
     }
+    return std::string(first, last);
+}
 
-    const auto colonPos = text.find(':', keyPos + token.size());
-    if (colonPos == std::string::npos) {
-        return defaultValue;
-    }
+std::string lower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
 
-    const auto valueStart = text.find_first_not_of(" \t\r\n", colonPos + 1);
-    if (valueStart == std::string::npos) {
-        return defaultValue;
-    }
-
-    try {
-        return std::stod(text.substr(valueStart));
-    } catch (...) {
-        return defaultValue;
+template <typename T>
+void readNumber(const std::string& text, const std::string& key, T& target) {
+    const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)");
+    std::smatch match;
+    if (std::regex_search(text, match, pattern)) {
+        std::istringstream stream(match[1].str());
+        stream >> target;
     }
 }
 
-std::string readString(const std::string& text, const std::string& key, const std::string& defaultValue) {
-    const std::string token = "\"" + key + "\"";
-    const auto keyPos = text.find(token);
-    if (keyPos == std::string::npos) {
-        return defaultValue;
+void readString(const std::string& text, const std::string& key, std::string& target) {
+    const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
+    std::smatch match;
+    if (std::regex_search(text, match, pattern)) {
+        target = trim(match[1].str());
     }
-
-    const auto colonPos = text.find(':', keyPos + token.size());
-    if (colonPos == std::string::npos) {
-        return defaultValue;
-    }
-
-    const auto firstQuote = text.find('"', colonPos + 1);
-    if (firstQuote == std::string::npos) {
-        return defaultValue;
-    }
-
-    const auto secondQuote = text.find('"', firstQuote + 1);
-    if (secondQuote == std::string::npos) {
-        return defaultValue;
-    }
-
-    return text.substr(firstQuote + 1, secondQuote - firstQuote - 1);
-}
-
-ArrivalPattern parseArrivalPattern(const std::string& value) {
-    if (value == "RushHour" || value == "rushHour" || value == "rush_hour") {
-        return ArrivalPattern::RushHour;
-    }
-    return ArrivalPattern::Steady;
-}
-
-WindowEfficiency parseWindowEfficiency(const std::string& value) {
-    if (value == "Variable" || value == "variable") {
-        return WindowEfficiency::Variable;
-    }
-    return WindowEfficiency::Uniform;
 }
 
 } // namespace
 
-Config Config::loadFromFile(const std::filesystem::path& filePath) {
-    Config config;
-
-    if (!std::filesystem::exists(filePath)) {
-        std::cerr << "[WARN] 配置文件不存在，使用默认配置: " << filePath << '\n';
-        return config;
-    }
-
-    const std::string text = readAllText(filePath);
-    if (text.empty()) {
-        std::cerr << "[WARN] 配置文件为空或读取失败，使用默认配置: " << filePath << '\n';
-        return config;
-    }
-
-    config.windowCount = static_cast<int>(readNumber(text, "windowCount", config.windowCount));
-    config.tableRows = static_cast<int>(readNumber(text, "tableRows", config.tableRows));
-    config.tableCols = static_cast<int>(readNumber(text, "tableCols", config.tableCols));
-    config.totalSimulationTime = static_cast<int>(readNumber(text, "totalSimulationTime", config.totalSimulationTime));
-
-    config.arrivalRate = readNumber(text, "arrivalRate", config.arrivalRate);
-    config.avgServiceTime = static_cast<int>(readNumber(text, "avgServiceTime", config.avgServiceTime));
-    config.avgDiningTime = static_cast<int>(readNumber(text, "avgDiningTime", config.avgDiningTime));
-
-    config.serviceStddev = readNumber(text, "serviceStddev", config.serviceStddev);
-    config.diningStddev = readNumber(text, "diningStddev", config.diningStddev);
-
-    config.rushHourStart = static_cast<int>(readNumber(text, "rushHourStart", config.rushHourStart));
-    config.rushHourEnd = static_cast<int>(readNumber(text, "rushHourEnd", config.rushHourEnd));
-    config.rushHourMultiplier = readNumber(text, "rushHourMultiplier", config.rushHourMultiplier);
-    config.randomSeed = static_cast<unsigned int>(readNumber(text, "randomSeed", config.randomSeed));
-
-    config.arrivalPattern = parseArrivalPattern(readString(text, "arrivalPattern", toString(config.arrivalPattern)));
-    config.windowEfficiency = parseWindowEfficiency(readString(text, "windowEfficiency", toString(config.windowEfficiency)));
-
-    return config;
-}
-
 std::string toString(ArrivalPattern pattern) {
     switch (pattern) {
+    case ArrivalPattern::Uniform:
+        return "Uniform";
     case ArrivalPattern::RushHour:
         return "RushHour";
-    case ArrivalPattern::Steady:
-    default:
-        return "Steady";
     }
+    return "Unknown";
 }
 
 std::string toString(WindowEfficiency efficiency) {
     switch (efficiency) {
+    case WindowEfficiency::Equal:
+        return "Equal";
     case WindowEfficiency::Variable:
         return "Variable";
-    case WindowEfficiency::Uniform:
-    default:
-        return "Uniform";
     }
+    return "Unknown";
+}
+
+ArrivalPattern parseArrivalPattern(const std::string& value) {
+    const auto normalized = lower(trim(value));
+    if (normalized == "uniform" || normalized == "flat" || normalized == "constant") {
+        return ArrivalPattern::Uniform;
+    }
+    if (normalized == "rushhour" || normalized == "rush_hour" || normalized == "rush-hour") {
+        return ArrivalPattern::RushHour;
+    }
+    throw std::invalid_argument("unsupported arrivalPattern: " + value);
+}
+
+WindowEfficiency parseWindowEfficiency(const std::string& value) {
+    const auto normalized = lower(trim(value));
+    if (normalized == "equal" || normalized == "same" || normalized == "constant") {
+        return WindowEfficiency::Equal;
+    }
+    if (normalized == "variable" || normalized == "varied") {
+        return WindowEfficiency::Variable;
+    }
+    throw std::invalid_argument("unsupported windowEfficiency: " + value);
+}
+
+Config Config::loadFromFile(const std::filesystem::path& path) {
+    Config config;
+    const auto text = readAll(path);
+
+    readNumber(text, "windowCount", config.windowCount);
+    readNumber(text, "tableRows", config.tableRows);
+    readNumber(text, "tableCols", config.tableCols);
+    readNumber(text, "totalSimulationTime", config.totalSimulationTime);
+    readNumber(text, "arrivalRate", config.arrivalRate);
+    readNumber(text, "avgServiceTime", config.avgServiceTime);
+    readNumber(text, "avgDiningTime", config.avgDiningTime);
+    readNumber(text, "serviceStddev", config.serviceStddev);
+    readNumber(text, "diningStddev", config.diningStddev);
+    readNumber(text, "rushHourStart", config.rushHourStart);
+    readNumber(text, "rushHourEnd", config.rushHourEnd);
+    readNumber(text, "rushHourMultiplier", config.rushHourMultiplier);
+    readNumber(text, "randomSeed", config.randomSeed);
+
+    std::string arrivalPatternText = bdss::core::toString(config.arrivalPattern);
+    std::string windowEfficiencyText = bdss::core::toString(config.windowEfficiency);
+    readString(text, "arrivalPattern", arrivalPatternText);
+    readString(text, "windowEfficiency", windowEfficiencyText);
+    config.arrivalPattern = parseArrivalPattern(arrivalPatternText);
+    config.windowEfficiency = parseWindowEfficiency(windowEfficiencyText);
+
+    config.validate();
+    return config;
+}
+
+void Config::validate() const {
+    if (windowCount <= 0) {
+        throw std::invalid_argument("windowCount must be positive");
+    }
+    if (tableRows <= 0 || tableCols <= 0) {
+        throw std::invalid_argument("tableRows and tableCols must be positive");
+    }
+    if (totalSimulationTime <= 0) {
+        throw std::invalid_argument("totalSimulationTime must be positive");
+    }
+    if (arrivalRate < 0.0) {
+        throw std::invalid_argument("arrivalRate must be non-negative");
+    }
+    if (avgServiceTime <= 0 || avgDiningTime <= 0) {
+        throw std::invalid_argument("avgServiceTime and avgDiningTime must be positive");
+    }
+    if (serviceStddev < 0.0 || diningStddev < 0.0) {
+        throw std::invalid_argument("serviceStddev and diningStddev must be non-negative");
+    }
+    if (rushHourStart < 0 || rushHourEnd < rushHourStart) {
+        throw std::invalid_argument("rushHourStart/rushHourEnd is invalid");
+    }
+    if (rushHourMultiplier <= 0.0) {
+        throw std::invalid_argument("rushHourMultiplier must be positive");
+    }
+}
+
+int Config::totalSeats() const noexcept {
+    return tableRows * tableCols;
+}
+
+double Config::arrivalRatePerSecond(int simulationTime) const noexcept {
+    auto ratePerMinute = arrivalRate;
+    if (arrivalPattern == ArrivalPattern::RushHour &&
+        simulationTime >= rushHourStart &&
+        simulationTime < rushHourEnd) {
+        ratePerMinute *= rushHourMultiplier;
+    }
+    return ratePerMinute / 60.0;
+}
+
+std::string Config::toString() const {
+    std::ostringstream os;
+    os << "windowCount=" << windowCount
+       << ", tableRows=" << tableRows
+       << ", tableCols=" << tableCols
+       << ", totalSimulationTime=" << totalSimulationTime
+       << ", arrivalRate=" << arrivalRate << " students/min"
+       << ", avgServiceTime=" << avgServiceTime
+       << ", avgDiningTime=" << avgDiningTime
+       << ", serviceStddev=" << serviceStddev
+       << ", diningStddev=" << diningStddev
+       << ", arrivalPattern=" << bdss::core::toString(arrivalPattern)
+       << ", windowEfficiency=" << bdss::core::toString(windowEfficiency)
+       << ", rushHourStart=" << rushHourStart
+       << ", rushHourEnd=" << rushHourEnd
+       << ", rushHourMultiplier=" << rushHourMultiplier
+       << ", randomSeed=" << randomSeed;
+    return os.str();
+}
+
+std::ostream& operator<<(std::ostream& os, const Config& config) {
+    return os << config.toString();
 }
 
 } // namespace bdss::core

@@ -1,46 +1,57 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <iosfwd>
 #include <string>
 
 namespace bdss::core {
 
 enum class ArrivalPattern {
-    Steady,
+    Uniform,
     RushHour
 };
 
 enum class WindowEfficiency {
-    Uniform,
+    Equal,
     Variable
 };
 
 struct Config {
-    int windowCount = 5;               // 窗口数量
-    int tableRows = 10;                // 餐桌矩阵行数
-    int tableCols = 10;                // 餐桌矩阵列数
-    int totalSimulationTime = 3600;    // 学生持续到达的仿真时长，单位：秒
+    int windowCount = 5;
+    int tableRows = 10;
+    int tableCols = 10;
+    int totalSimulationTime = 3600;
 
-    double arrivalRate = 5.0;          // 学生平均到达频率，单位：人/分钟
-    int avgServiceTime = 20;           // 窗口平均打饭耗时，单位：秒
-    int avgDiningTime = 900;           // 学生平均就餐时长，单位：秒
+    // Students per minute. The original project kept the key name "arrivalRate";
+    // this implementation treats it as a per-minute intensity to match the
+    // expected lunch-hour scale.
+    double arrivalRate = 5.0;
 
-    double serviceStddev = 5.0;        // 打饭耗时标准差
-    double diningStddev = 180.0;       // 就餐时长标准差
+    int avgServiceTime = 20;
+    int avgDiningTime = 900;
+    double serviceStddev = 5.0;
+    double diningStddev = 180.0;
 
-    ArrivalPattern arrivalPattern = ArrivalPattern::Steady;
-    WindowEfficiency windowEfficiency = WindowEfficiency::Uniform;
+    ArrivalPattern arrivalPattern = ArrivalPattern::RushHour;
+    WindowEfficiency windowEfficiency = WindowEfficiency::Variable;
 
-    int rushHourStart = 900;           // 高峰开始时间，单位：秒
-    int rushHourEnd = 1800;            // 高峰结束时间，单位：秒
-    double rushHourMultiplier = 2.0;   // 高峰到达率倍率
+    int rushHourStart = 900;
+    int rushHourEnd = 1800;
+    double rushHourMultiplier = 2.0;
+    std::uint32_t randomSeed = 42;
 
-    unsigned int randomSeed = 42;      // 固定随机种子，便于测试复现
-
-    static Config loadFromFile(const std::filesystem::path& filePath);
+    static Config loadFromFile(const std::filesystem::path& path);
+    void validate() const;
+    int totalSeats() const noexcept;
+    double arrivalRatePerSecond(int simulationTime) const noexcept;
+    std::string toString() const;
 };
 
 std::string toString(ArrivalPattern pattern);
 std::string toString(WindowEfficiency efficiency);
+ArrivalPattern parseArrivalPattern(const std::string& value);
+WindowEfficiency parseWindowEfficiency(const std::string& value);
+std::ostream& operator<<(std::ostream& os, const Config& config);
 
 } // namespace bdss::core

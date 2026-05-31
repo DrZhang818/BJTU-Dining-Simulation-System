@@ -2,6 +2,7 @@
 
 #include "core/Student.h"
 
+#include <cstddef>
 #include <memory>
 #include <queue>
 
@@ -9,21 +10,23 @@ namespace bdss::core {
 
 class Window {
 public:
-    Window(int id, double efficiencyFactor = 1.0);
+    Window(int id, double efficiency = 1.0);
 
-    void enqueue(const std::shared_ptr<Student>& student, int currentTime);
-    std::shared_ptr<Student> tick(int currentTime);
+    int getId() const noexcept;
+    double getEfficiency() const noexcept;
+    std::size_t getQueueLength() const noexcept;
+    std::size_t getWorkloadLength() const noexcept;
+    bool empty() const noexcept;
+    bool isServing() const noexcept;
 
-    std::size_t getQueueLength() const { return queue_.size(); }
-    int getId() const { return id_; }
-    double getEfficiency() const { return efficiency_; }
-    bool empty() const { return queue_.empty(); }
+    void enqueue(const std::shared_ptr<Student>& student, int now);
+    std::shared_ptr<Student> tick(int now);
 
 private:
     int id_;
     double efficiency_;
-    double workAccumulator_;
     std::queue<std::shared_ptr<Student>> queue_;
+    std::shared_ptr<Student> current_;
 };
 
 } // namespace bdss::core

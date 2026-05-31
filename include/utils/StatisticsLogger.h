@@ -2,6 +2,7 @@
 
 #include "core/Student.h"
 
+#include <filesystem>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -9,7 +10,7 @@
 
 namespace bdss::utils {
 
-struct TickRecord {
+struct Snapshot {
     int time = 0;
     int totalQueueLength = 0;
     int waitingForSeatCount = 0;
@@ -18,41 +19,39 @@ struct TickRecord {
     double seatUtilization = 0.0;
 };
 
+struct SimulationSummary {
+    int finishedStudents = 0;
+    int maxQueueLength = 0;
+    int maxWaitingForSeatCount = 0;
+    double averageQueueWaitTime = 0.0;
+    double averageSeatWaitTime = 0.0;
+    double averageServiceTime = 0.0;
+    double averageTotalTimeInCanteen = 0.0;
+    double averageSeatUtilization = 0.0;
+};
+
 class StatisticsLogger {
 public:
-    void recordTick(int time,
-                    int totalQueueLength,
-                    int waitingForSeatCount,
-                    int occupiedSeats,
-                    int totalSeats,
-                    int finishedStudents);
+    void clear();
+    void record(int time,
+                int totalQueueLength,
+                int waitingForSeatCount,
+                int occupiedSeats,
+                int finishedStudents,
+                double seatUtilization);
+    void finalize(const std::vector<std::shared_ptr<bdss::core::Student>>& finishedStudents);
 
-    void logStudentFinished(const std::shared_ptr<bdss::core::Student>& student);
+    const SimulationSummary& summary() const noexcept;
+    const std::vector<Snapshot>& snapshots() const noexcept;
+    int getFinishedCount() const noexcept;
 
-    void exportCSV(const std::string& filename) const;
+    void exportCSV(const std::filesystem::path& outputPath) const;
     void printSummary(std::ostream& os) const;
-
-    int getFinishedCount() const { return finishedCount_; }
-    int getMaxQueueLength() const { return maxQueueLength_; }
-    int getMaxWaitingForSeatCount() const { return maxWaitingForSeatCount_; }
-
-    double getAverageWaitTime() const;
-    double getAverageSeatWaitTime() const;
-    double getAverageServiceTime() const;
-    double getAverageTotalTime() const;
-    double getAverageSeatUtilization() const;
+    std::string summaryText() const;
 
 private:
-    std::vector<TickRecord> records_;
-
-    int finishedCount_ = 0;
-    int maxQueueLength_ = 0;
-    int maxWaitingForSeatCount_ = 0;
-
-    long long totalWaitTime_ = 0;
-    long long totalSeatWaitTime_ = 0;
-    long long totalServiceTime_ = 0;
-    long long totalTime_ = 0;
+    std::vector<Snapshot> snapshots_;
+    SimulationSummary summary_;
 };
 
 } // namespace bdss::utils

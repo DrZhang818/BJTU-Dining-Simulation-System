@@ -1,61 +1,11 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
 *.exe
-*.out
-*.app
-
-# debug information files
-*.dwo
-
-# 编译生成文件夹
-/build/
-/out/
-/bin/
-
-# VS Code 配置
-.vscode/
-*.code-workspace
-
-# Qt 生成文件
 *.user
-/moc_*.cpp
-/ui_*.h
-/qrc_*.cpp
-*.moc
-
-# 临时文件
-*.log
-*.tmp
+.DS_Store
+simulation_log.csv
+statistics_test.csv

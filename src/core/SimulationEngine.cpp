@@ -4,81 +4,142 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace bdss::core {
 
-SimulationEngine::SimulationEngine(const Config& config)
+SimulationEngine::SimulationEngine(Config config)
     : config_(config), canteen_(config.tableRows, config.tableCols) {
-    if (config_.windowCount <= 0) {
-        throw std::invalid_argument("windowCount must be greater than 0");
-    }
+    config_.validate();
+    reset();
+}
 
-    if (config_.tableRows <= 0 || config_.tableCols <= 0) {
-        throw std::invalid_argument("tableRows and tableCols must be greater than 0");
-    }
-
-    if (config_.totalSimulationTime <= 0) {
-        throw std::invalid_argument("totalSimulationTime must be greater than 0");
-    }
-
-    bdss::utils::RandomGenerator::setSeed(config_.randomSeed);
-
-    windows_.reserve(config_.windowCount);
+void SimulationEngine::reset() {
+    config_.validate();
+    currentTime_ = 0;
+    nextStudentId_ = 1;
+    canteen_ = Canteen(config_.tableRows, config_.tableCols);
+    windows_.clear();
+    const auto efficiencies = buildWindowEfficiencies();
     for (int i = 0; i < config_.windowCount; ++i) {
-        double efficiency = 1.0;
-        if (config_.windowEfficiency == WindowEfficiency::Variable) {
-            // 简单模拟窗口效率差异：0.8, 0.9, 1.0, 1.1, 1.2 循环
-            efficiency = 0.8 + 0.1 * static_cast<double>(i % 5);
+        windows_.emplace_back(i + 1, efficiencies.at(static_cast<std::size_t>(i)));
+    }
+    waitingForSeat_.clear();
+    allStudents_.clear();
+    finishedStudents_.clear();
+    statistics_.clear();
+    utils::RandomGenerator::setSeed(config_.randomSeed);
+}
+
+std::vector<double> SimulationEngine::buildWindowEfficiencies() const {
+    std::vector<double> efficiencies;
+    efficiencies.reserve(static_cast<std::size_t>(config_.windowCount));
+    for (int i = 0; i < config_.windowCount; ++i) {
+        if (config_.windowEfficiency == WindowEfficiency::Equal) {
+            efficiencies.push_back(1.0);
+        } else {
+            // Deterministic variance around 1.0 avoids flaky tests and makes
+            // capacity differences visible in simulation results.
+            static constexpr double pattern[] = {0.85, 0.95, 1.05, 1.15, 1.00};
+            efficiencies.push_back(pattern[static_cast<std::size_t>(i % 5)]);
         }
-        windows_.emplace_back(i + 1, efficiency);
+    }
+    return efficiencies;
+}
+
+int SimulationEngine::boundedServiceTimeForWindow(int rawServiceTime, const Window& window) const noexcept {
+    const auto adjusted = static_cast<int>(std::ceil(static_cast<double>(rawServiceTime) / window.getEfficiency()));
+    return std::max(1, adjusted);
+}
+
+Window& SimulationEngine::chooseWindow() {
+    return *std::min_element(windows_.begin(), windows_.end(), [](const Window& lhs, const Window& rhs) {
+        if (lhs.getWorkloadLength() == rhs.getWorkloadLength()) {
+            return lhs.getId() < rhs.getId();
+        }
+        return lhs.getWorkloadLength() < rhs.getWorkloadLength();
+    });
+}
+
+void SimulationEngine::generateArrivals() {
+    if (currentTime_ >= config_.totalSimulationTime) {
+        return;
+    }
+    const int arrivals = utils::RandomGenerator::getPoisson(config_.arrivalRatePerSecond(currentTime_));
+    for (int i = 0; i < arrivals; ++i) {
+        auto serviceTime = utils::RandomGenerator::getNormalInt(config_.avgServiceTime, config_.serviceStddev, 1);
+        auto diningTime = utils::RandomGenerator::getNormalInt(config_.avgDiningTime, config_.diningStddev, 1);
+        auto student = std::make_shared<Student>(nextStudentId_++, currentTime_, serviceTime, diningTime);
+        Window& window = chooseWindow();
+        student->setServiceTime(boundedServiceTimeForWindow(serviceTime, window));
+        window.enqueue(student, currentTime_);
+        allStudents_.push_back(student);
     }
 }
 
 void SimulationEngine::tick() {
-    if (isFinished()) {
-        return;
-    }
-
-    if (currentTime_ < config_.totalSimulationTime) {
-        generateStudents();
-    }
+    generateArrivals();
 
     for (auto& window : windows_) {
-        auto completedStudent = window.tick(currentTime_);
-        if (completedStudent) {
-            waitingForSeat_.push(completedStudent);
+        auto completed = window.tick(currentTime_);
+        if (completed) {
+            waitingForSeat_.push_back(completed);
         }
     }
 
-    auto finishedStudents = canteen_.tick(currentTime_);
-    for (const auto& student : finishedStudents) {
-        logger_.logStudentFinished(student);
+    auto newlyFinished = canteen_.tick(currentTime_);
+    for (auto& student : newlyFinished) {
+        finishedStudents_.push_back(student);
     }
 
-    seatWaitingStudents(currentTime_ + 1);
+    while (!waitingForSeat_.empty() && canteen_.hasEmptySeat()) {
+        auto student = waitingForSeat_.front();
+        if (!canteen_.trySeat(student, currentTime_ + 1)) {
+            break;
+        }
+        waitingForSeat_.pop_front();
+    }
 
-    logger_.recordTick(currentTime_ + 1,
+    statistics_.record(currentTime_ + 1,
                        getTotalQueueLength(),
                        getWaitingForSeatCount(),
-                       canteen_.getOccupiedSeats(),
-                       canteen_.getTotalSeats(),
-                       logger_.getFinishedCount());
+                       getOccupiedSeats(),
+                       static_cast<int>(finishedStudents_.size()),
+                       canteen_.utilization());
 
     ++currentTime_;
 }
 
 void SimulationEngine::run() {
+    const int safetyLimit = config_.totalSimulationTime + std::max(3600, config_.avgDiningTime * 6 + config_.avgServiceTime * config_.windowCount * 20);
     while (!isFinished()) {
+        if (currentTime_ > safetyLimit) {
+            throw std::runtime_error("simulation safety limit reached; check configuration capacity and arrival rate");
+        }
         tick();
     }
+    statistics_.finalize(finishedStudents_);
 }
 
-bool SimulationEngine::isFinished() const {
-    return currentTime_ >= config_.totalSimulationTime && isSystemEmpty();
+bool SimulationEngine::hasActiveStudents() const noexcept {
+    for (const auto& window : windows_) {
+        if (!window.empty()) {
+            return true;
+        }
+    }
+    return !waitingForSeat_.empty() || canteen_.getOccupiedSeats() > 0;
 }
 
-int SimulationEngine::getTotalQueueLength() const {
+bool SimulationEngine::isFinished() const noexcept {
+    return currentTime_ >= config_.totalSimulationTime && !hasActiveStudents();
+}
+
+int SimulationEngine::getCurrentTime() const noexcept {
+    return currentTime_;
+}
+
+int SimulationEngine::getTotalQueueLength() const noexcept {
     int total = 0;
     for (const auto& window : windows_) {
         total += static_cast<int>(window.getQueueLength());
@@ -86,100 +147,32 @@ int SimulationEngine::getTotalQueueLength() const {
     return total;
 }
 
-std::vector<int> SimulationEngine::getWindowQueueLengths() const {
-    std::vector<int> result;
-    result.reserve(windows_.size());
-
-    for (const auto& window : windows_) {
-        result.push_back(static_cast<int>(window.getQueueLength()));
-    }
-
-    return result;
+int SimulationEngine::getWaitingForSeatCount() const noexcept {
+    return static_cast<int>(waitingForSeat_.size());
 }
 
-std::vector<double> SimulationEngine::getWindowEfficiencies() const {
-    std::vector<double> result;
-    result.reserve(windows_.size());
-
-    for (const auto& window : windows_) {
-        result.push_back(window.getEfficiency());
-    }
-
-    return result;
+int SimulationEngine::getOccupiedSeats() const noexcept {
+    return canteen_.getOccupiedSeats();
 }
 
-void SimulationEngine::generateStudents() {
-    const int newStudents = bdss::utils::RandomGenerator::getPoisson(currentArrivalLambdaPerSecond());
-
-    for (int i = 0; i < newStudents; ++i) {
-        const int serviceTime = std::max(1, static_cast<int>(std::round(
-            bdss::utils::RandomGenerator::getNormal(config_.avgServiceTime, config_.serviceStddev))));
-
-        const int diningTime = std::max(1, static_cast<int>(std::round(
-            bdss::utils::RandomGenerator::getNormal(config_.avgDiningTime, config_.diningStddev))));
-
-        auto student = std::make_shared<Student>(nextStudentId_++, currentTime_, serviceTime, diningTime);
-        const int windowIndex = chooseWindowIndex();
-        windows_[windowIndex].enqueue(student, currentTime_);
-    }
+int SimulationEngine::getGeneratedStudentCount() const noexcept {
+    return static_cast<int>(allStudents_.size());
 }
 
-int SimulationEngine::chooseWindowIndex() const {
-    int bestIndex = 0;
-    std::size_t bestLength = windows_[0].getQueueLength();
-
-    for (int i = 1; i < static_cast<int>(windows_.size()); ++i) {
-        const auto length = windows_[i].getQueueLength();
-        if (length < bestLength) {
-            bestLength = length;
-            bestIndex = i;
-        }
-    }
-
-    return bestIndex;
+const Config& SimulationEngine::config() const noexcept {
+    return config_;
 }
 
-void SimulationEngine::seatWaitingStudents(int currentTime) {
-    std::queue<std::shared_ptr<Student>> remaining;
-
-    while (!waitingForSeat_.empty()) {
-        auto student = waitingForSeat_.front();
-        waitingForSeat_.pop();
-
-        if (!canteen_.trySeat(student, currentTime)) {
-            remaining.push(student);
-            break;
-        }
-    }
-
-    while (!waitingForSeat_.empty()) {
-        remaining.push(waitingForSeat_.front());
-        waitingForSeat_.pop();
-    }
-
-    waitingForSeat_ = std::move(remaining);
+const Canteen& SimulationEngine::canteen() const noexcept {
+    return canteen_;
 }
 
-bool SimulationEngine::isSystemEmpty() const {
-    for (const auto& window : windows_) {
-        if (!window.empty()) {
-            return false;
-        }
-    }
-
-    return waitingForSeat_.empty() && canteen_.getOccupiedSeats() == 0;
+const std::vector<Window>& SimulationEngine::windows() const noexcept {
+    return windows_;
 }
 
-double SimulationEngine::currentArrivalLambdaPerSecond() const {
-    double peoplePerMinute = config_.arrivalRate;
-
-    if (config_.arrivalPattern == ArrivalPattern::RushHour &&
-        currentTime_ >= config_.rushHourStart &&
-        currentTime_ <= config_.rushHourEnd) {
-        peoplePerMinute *= config_.rushHourMultiplier;
-    }
-
-    return peoplePerMinute / 60.0;
+const utils::StatisticsLogger& SimulationEngine::getStatistics() const noexcept {
+    return statistics_;
 }
 
 } // namespace bdss::core
