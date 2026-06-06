@@ -1,100 +1,88 @@
-# 北京交通大学就餐仿真系统（BDSS）
+# BJTU Dining Simulation System
 
-BDSS（Beijing Jiaotong University Dining Simulation System）是面向《软件综合实训》的食堂高峰期离散事件仿真系统。系统模拟学生到达、窗口排队、打饭服务、等待座位、就餐和离场全过程，并输出窗口排队、座位利用率、等待时间等统计指标。
+北京交通大学就餐仿真系统。项目使用 C++17 实现离散时间/离散事件风格的食堂排队、服务、找座、就餐、清洁、外带、群体就餐和窗口偏好模型，并提供命令行批量仿真与 Qt6 图形界面。
 
-## 特性
+## 这版主要改进
 
-- **离散事件仿真引擎** — 学生从到达 → 排队 → 服务 → 等座 → 就餐 → 离开的全生命周期
-- **多峰人流模型** — 支持配置多个就餐高峰时段及强度
-- **就餐者画像** — 本科生/研究生/教职工三类人群，不同就餐时长
-- **窗口偏好** — 学生按窗口类别偏好选择排队队列
-- **耐心模型** — 排队过久可离场或切换队列
-- **打包外带** — 支持打包比例配置，打包学生不占用座位
-- **座位清洁** — 学生离开后座位进入清洁状态
-- **结伴用餐** — 支持生成小组，分配邻座
-- **座位偏好** — 就近窗口、结伴邻座、陌生人间隔等加权评分
-- **Qt6 图形界面** — 实时渲染、配置编辑、统计图表、CSV 导出
-- **命令行模式** — 无 GUI 环境亦可运行并输出 CSV
-- **严格兼容模式** — 关闭偏好功能后可用旧种子复现结果
+- 修复“前端参数显示已变，但内部逻辑没有跟上”的问题：`SimulationEngine::updateConfig()` 会在应用参数时同步内核配置，并重新构建餐口数组；新增窗口会立即参与 `chooseWindowIndex()` 排队路由。
+- 新增回归测试：覆盖初始增加窗口、运行中增加窗口、配置归一化、CSV 导出、外带不占座等核心场景。
+- 优化配置系统：支持 `windowProfiles`、`studentTypes`、多段高峰、窗口效率、耐心换队、外带打包、清洁、群体就餐和座位偏好；同时兼容部分旧字段名。
+- 优化 UI：提供参数同步状态、应用参数按钮、实时餐口排队卡片、座位矩阵、统计卡片、趋势曲线和 CSV 导出。
+- 优化工程结构：CMake 选项更清晰，Qt 不存在时自动构建命令行版本，CI 会编译、测试并做 smoke run。
 
-## 目录结构
+## 构建
 
-```text
-.
-├── CMakeLists.txt                 # 构建配置
-├── main.cpp                       # 程序入口
-├── include/
-│   ├── core/                      # 核心仿真：Config, Student, Window, Canteen, SimulationEngine
-│   ├── gui/                       # GUI：MainWindow, RenderWidget
-│   └── utils/                     # 工具：RandomGenerator, StatisticsLogger
-├── src/
-│   ├── core/                      # 核心仿真实现
-│   ├── gui/                       # GUI 实现
-│   └── utils/                     # 工具实现
-├── resources/
-│   └── default_config.json        # 默认仿真配置
-├── tests/
-│   └── test_core.cpp              # 核心模块单元测试
-└── docs/
-    ├── DEVELOPMENT_LOG.md         # 开发日志
-    ├── OPTIMIZATION_SUMMARY.md    # 优化总结
-    ├── RUN_GUIDE.md               # 快速运行指南
-    └── evidence/                  # 验证截图与日志
-```
-
-## 编译
+命令行版本不依赖 Qt：
 
 ```bash
-rm -rf build
 cmake -S . -B build -DBDSS_BUILD_GUI=OFF
-cmake --build build
-```
-
-如本机安装了 Qt 6 Widgets，也可以不关闭 GUI：
-
-```bash
-cmake -S . -B build -DBDSS_BUILD_GUI=ON
-cmake --build build
-```
-
-## 运行
-
-```bash
-./build/BDSS --headless --config resources/default_config.json --output simulation_log.csv
-```
-
-可选参数：
-
-```bash
-./build/BDSS --headless --seed 2026 --duration 1800 --output result.csv
-```
-
-启动图形界面：
-
-```bash
-./build/BDSS --gui
-```
-
-## 测试
-
-```bash
-./build/BDSS_CoreTest
+cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-## CSV 字段
+图形界面版本需要 Qt6 Widgets：
 
-| 字段 | 含义 |
-|---|---|
-| `time` | 当前仿真时间，单位秒 |
-| `total_queue_length` | 所有窗口可见排队人数总和 |
-| `waiting_for_seat_count` | 打饭完成后正在等待座位的人数 |
-| `occupied_seats` | 当前已占用座位数 |
-| `finished_students` | 已完成就餐并离开的人数 |
-| `seat_utilization` | 当前座位利用率百分比 |
+```bash
+cmake -S . -B build -DBDSS_BUILD_GUI=ON
+cmake --build build --parallel
+./build/BDSS --gui --config resources/default_config.json
+```
 
-## 运行环境建议
+如果当前机器没有 Qt6 Widgets，CMake 会自动退回命令行版本。
 
-- CMake 3.20+
-- 支持 C++23 的编译器，例如 GCC 13+、Clang 16+、MSVC 2022
-- Qt 6 Widgets 可选，仅用于 GUI
+## 命令行运行
+
+```bash
+./build/BDSS --headless \
+  --config resources/default_config.json \
+  --output simulation_log.csv \
+  --seed 42 \
+  --duration 3600 \
+  --window-count 10
+```
+
+常用参数：
+
+- `--config FILE`：读取 JSON 配置。
+- `--output FILE`：输出 CSV。
+- `--seed N`：覆盖随机种子。
+- `--duration SEC`：覆盖仿真时长，单位秒。
+- `--window-count N`：覆盖餐口数量。
+- `--arrival-rate X`：覆盖到达率，单位人/分钟。
+
+## 配置文件
+
+默认配置在 `resources/default_config.json`。高峰时间使用“仿真开始后的秒数”，例如 `900` 表示仿真开始后第 15 分钟。
+
+示例配置：
+
+```json
+{
+  "windowCount": 10,
+  "arrivalRate": 7.5,
+  "arrivalPattern": "RushPeaks",
+  "rushPeaks": [
+    { "start": 900, "end": 2400, "multiplier": 2.4 }
+  ],
+  "enableWindowPreferences": true,
+  "windowCategories": ["米饭套餐", "面食", "麻辣烫", "清真窗口"],
+  "enableTakeaway": true,
+  "takeawayRate": 0.18
+}
+```
+
+更多说明见：
+
+- `docs/OPTIMIZATION_REPORT.md`
+- `docs/MODEL_ASSUMPTIONS.md`
+- `docs/RUN_GUIDE.md`
+
+## CSV 输出
+
+CSV 包含整体指标和每个窗口指标：
+
+```text
+time,total_queue_length,waiting_for_seat_count,occupied_seats,cleaning_seats,total_seats,finished_students,dropped_students,takeaway_students,in_system_students,seat_utilization,window_queue_lengths,window_served_counts
+```
+
+`window_queue_lengths` 和 `window_served_counts` 使用分号分隔，例如 `"0;2;1;0;5"`。

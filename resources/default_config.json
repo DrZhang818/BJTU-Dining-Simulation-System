@@ -3,30 +3,59 @@
   "tableRows": 10,
   "tableCols": 10,
   "totalSimulationTime": 6600,
+  "randomSeed": 42,
 
   "arrivalRate": 6.0,
   "avgServiceTime": 25,
-  "avgDiningTime": 900,
-
   "serviceStddev": 8.0,
+  "avgDiningTime": 900,
   "diningStddev": 240.0,
-
-  "arrivalPattern": "RushHour",
+  "arrivalPattern": "RushPeaks",
   "windowEfficiency": "Variable",
-
   "rushPeaks": [
-    {"start": 3600, "end": 4500, "multiplier": 2.5},
-    {"start": 4800, "end": 6000, "multiplier": 1.8}
+    { "start": 900, "end": 2400, "multiplier": 2.4 },
+    { "start": 3000, "end": 4500, "multiplier": 1.8 }
   ],
-  "randomSeed": 42,
 
-  "enablePreferences": true,
-  "ratioUndergrad": 0.65,
-  "ratioGrad": 0.25,
-  "ratioStaff": 0.10,
-  "undergradDiningFactor": 0.80,
-  "staffDiningFactor": 1.35,
-  "queueLengthWeight": 1.0,
+  "enableWindowPreferences": true,
+  "windowCategories": ["米饭套餐", "面食", "麻辣烫", "清真窗口", "轻食沙拉", "韩式料理", "快餐", "饮品"],
+  "windowProfiles": [
+    { "name": "窗口 1", "category": "米饭套餐", "efficiency": 1.00 },
+    { "name": "窗口 2", "category": "面食", "efficiency": 0.95 },
+    { "name": "窗口 3", "category": "麻辣烫", "efficiency": 0.90 },
+    { "name": "窗口 4", "category": "清真窗口", "efficiency": 1.05 },
+    { "name": "窗口 5", "category": "轻食沙拉", "efficiency": 1.10 },
+    { "name": "窗口 6", "category": "韩式料理", "efficiency": 0.92 },
+    { "name": "窗口 7", "category": "快餐", "efficiency": 1.15 },
+    { "name": "窗口 8", "category": "饮品", "efficiency": 1.20 }
+  ],
+  "studentTypes": [
+    { "name": "本科生", "ratio": 0.65, "diningTimeFactor": 0.85, "patienceFactor": 1.00 },
+    { "name": "研究生", "ratio": 0.25, "diningTimeFactor": 1.00, "patienceFactor": 1.10 },
+    { "name": "教职工", "ratio": 0.10, "diningTimeFactor": 1.25, "patienceFactor": 1.25 }
+  ],
+  "queueWeight": 1.0,
   "preferenceBonus": 3.0,
-  "windowCategories": ["麻辣烫", "米饭套餐", "米线", "清真窗口", "西餐简餐", "面食", "韩式料理", "轻食沙拉"]
+  "efficiencyWeight": 1.0,
+
+  "enablePatience": true,
+  "avgPatienceTime": 420.0,
+  "patienceStddev": 90.0,
+  "queueSwitchProbability": 0.12,
+
+  "enableTakeaway": true,
+  "takeawayRate": 0.18,
+  "packingServiceFactor": 1.25,
+
+  "enableCleaning": true,
+  "cleaningTime": 45,
+
+  "enableGroupDining": true,
+  "groupProbability": 0.22,
+  "maxGroupSize": 4,
+
+  "enableSeatPreference": true,
+  "nearWindowWeight": 0.25,
+  "groupAdjacencyBonus": 2.5,
+  "strangerSpacingPenalty": 0.5
 }

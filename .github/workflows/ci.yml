@@ -1,0 +1,19 @@
+name: core-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-headless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DBDSS_BUILD_GUI=OFF -DBDSS_ENABLE_WARNINGS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Smoke run
+        run: ./build/BDSS --headless --config resources/default_config.json --duration 300 --output simulation_log.csv

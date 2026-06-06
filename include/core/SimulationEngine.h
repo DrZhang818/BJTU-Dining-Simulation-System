@@ -5,54 +5,82 @@
 #include "core/Window.h"
 #include "utils/StatisticsLogger.h"
 
-#include <deque>
 #include <memory>
+#include <queue>
+#include <random>
+#include <string>
 #include <vector>
 
 namespace bdss::core {
 
+struct WindowSnapshot {
+    int id = 0;
+    std::string name;
+    std::string category;
+    double efficiency = 1.0;
+    int queueLength = 0;
+    int servedCount = 0;
+    bool serving = false;
+    int currentStudentId = -1;
+    int remainingServiceTime = 0;
+};
+
 class SimulationEngine {
 public:
-    explicit SimulationEngine(Config config);
+    explicit SimulationEngine(const Config& config);
 
-    void reset();
     void tick();
     void run();
-    bool isFinished() const noexcept;
+    void updateConfig(const Config& config, bool preserveRuntimeState = true);
+    bool isFinished() const;
 
-    int getCurrentTime() const noexcept { return currentTime_; }
-    int getTotalQueueLength() const noexcept;
-    int getWaitingForSeatCount() const noexcept { return static_cast<int>(waitingForSeat_.size()); }
-    int getOccupiedSeats() const noexcept { return canteen_.getOccupiedSeats(); }
-    int getGeneratedStudentCount() const noexcept { return static_cast<int>(allStudents_.size()); }
-    int getFinishedStudentCount() const noexcept { return static_cast<int>(finishedStudents_.size()); }
+    const Config& getConfig() const { return config_; }
+    int getCurrentTime() const { return currentTime_; }
+    int getTotalSimulationTime() const { return config_.totalSimulationTime; }
+    int getGeneratedCount() const { return logger_.getGeneratedCount(); }
+    int getDroppedCount() const { return logger_.getDroppedCount(); }
+    int getTakeawayCount() const { return logger_.getTakeawayCount(); }
+    int getTotalQueueLength() const;
+    int getWaitingForSeatCount() const { return static_cast<int>(waitingForSeat_.size()); }
+    int getOccupiedSeats() const { return canteen_.getOccupiedSeats(); }
+    int getCleaningSeats() const { return canteen_.getCleaningSeats(); }
+    int getTotalSeats() const { return canteen_.getTotalSeats(); }
+    double getSeatUtilization() const { return canteen_.getSeatUtilization(); }
+    int getInSystemCount() const;
 
-    const Config& config() const noexcept { return config_; }
-    const Canteen& canteen() const noexcept { return canteen_; }
-    const std::vector<Window>& windows() const noexcept { return windows_; }
-    const utils::StatisticsLogger& getStatistics() const noexcept { return statistics_; }
+    std::vector<int> getWindowQueueLengths() const;
+    std::vector<int> getWindowServedCounts() const;
+    std::vector<double> getWindowEfficiencies() const;
+    std::vector<WindowSnapshot> getWindowSnapshots() const;
+    std::vector<SeatSnapshot> getSeatSnapshots() const { return canteen_.getSeatSnapshots(); }
+    const bdss::utils::StatisticsLogger& getStatistics() const { return logger_; }
 
 private:
-    void generateArrivals();
-    Window& chooseWindow();
-    Window& chooseWindowWithPreference(const std::shared_ptr<Student>& student);
-    std::shared_ptr<Student> createStudentWithPreferences(int serviceTime, int diningTime);
-    void assignDiningGroups(int arrivalCount);
-    std::vector<double> buildWindowEfficiencies() const;
-    bool hasActiveStudents() const noexcept;
-    int boundedServiceTimeForWindow(int rawServiceTime, const Window& window) const noexcept;
+    void setupWindows();
+    WindowProfile profileForWindow(int index, const Config& config) const;
+    void rebuildWindowsForConfig(const Config& config, bool preserveRuntimeState);
+    void generateStudents();
+    void generateStudentGroup(int groupSize);
+    int chooseWindowIndex(const Student& student) const;
+    void handlePatienceAndQueueSwitching();
+    void seatWaitingStudents(int currentTime);
+    bool isSystemEmpty() const;
+    double currentArrivalLambdaPerSecond() const;
+    StudentTypeProfile sampleStudentType();
+    std::string samplePreferredCategory();
+    int samplePositiveNormal(double mean, double stddev, int minValue = 1);
+    bool bernoulli(double probability);
+    int sampleGroupSize();
 
     Config config_;
-    int currentTime_ = 0;
-    int nextStudentId_ = 1;
     Canteen canteen_;
     std::vector<Window> windows_;
-    std::deque<std::shared_ptr<Student>> waitingForSeat_;
-    std::vector<std::shared_ptr<Student>> allStudents_;
-    std::vector<std::shared_ptr<Student>> finishedStudents_;
-    int droppedStudents_ = 0;
-    bool finalized_ = false;
-    utils::StatisticsLogger statistics_;
+    std::queue<std::shared_ptr<Student>> waitingForSeat_;
+    bdss::utils::StatisticsLogger logger_;
+    std::mt19937 rng_;
+    int currentTime_ = 0;
+    int nextStudentId_ = 1;
+    int nextGroupId_ = 1;
 };
 
 } // namespace bdss::core

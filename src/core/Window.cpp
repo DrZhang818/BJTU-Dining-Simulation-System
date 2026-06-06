@@ -2,63 +2,98 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
+#include <utility>
 
 namespace bdss::core {
 
-Window::Window(int id, double efficiency)
-    : id_(id), efficiency_(std::max(0.1, efficiency)) {
-    if (id <= 0) {
-        throw std::invalid_argument("Window id must be positive");
-    }
-}
+Window::Window(int id, std::string name, std::string category, double efficiency)
+    : id_(id), name_(std::move(name)), category_(std::move(category)), efficiency_(std::max(0.05, efficiency)) {}
 
-void Window::enqueue(const std::shared_ptr<Student>& student, int now) {
+void Window::enqueue(const std::shared_ptr<Student>& student, int currentTime) {
     if (!student) {
-        throw std::invalid_argument("cannot enqueue null student");
+        return;
     }
-    student->startQueuing(now);
+    student->enterQueue(currentTime, id_);
     queue_.push_back(student);
 }
 
-void Window::reEnqueue(const std::shared_ptr<Student>& student) {
-    queue_.push_back(student);
+std::vector<std::shared_ptr<Student>> Window::getQueuedStudents() const {
+    return {queue_.begin(), queue_.end()};
 }
 
-std::shared_ptr<Student> Window::tick(int now) {
-    if (!current_ && !queue_.empty()) {
-        current_ = queue_.front();
+void Window::setProfile(std::string name, std::string category, double efficiency) {
+    name_ = std::move(name);
+    category_ = std::move(category);
+    efficiency_ = std::max(0.05, efficiency);
+}
+
+std::vector<std::shared_ptr<Student>> Window::releaseQueuedStudents() {
+    std::vector<std::shared_ptr<Student>> students;
+    students.reserve(queue_.size());
+    while (!queue_.empty()) {
+        students.push_back(queue_.front());
         queue_.pop_front();
-        current_->startServing(now);
     }
+    return students;
+}
 
-    if (!current_) {
+std::shared_ptr<Student> Window::releaseCurrentStudent() {
+    auto student = currentStudent_;
+    currentStudent_.reset();
+    remainingServiceTime_ = 0;
+    return student;
+}
+
+std::shared_ptr<Student> Window::tick(int currentTime) {
+    startNextIfNeeded(currentTime);
+    if (!currentStudent_) {
         return nullptr;
     }
 
-    if (current_->advanceServiceOneSecond()) {
-        auto completed = current_;
-        completed->finishServiceAndWaitForSeat(now + 1);
-        current_.reset();
+    --remainingServiceTime_;
+    if (remainingServiceTime_ <= 0) {
+        auto completed = currentStudent_;
+        completed->finishService(currentTime + 1);
+        currentStudent_.reset();
+        remainingServiceTime_ = 0;
+        ++servedCount_;
+        startNextIfNeeded(currentTime + 1);
         return completed;
     }
     return nullptr;
 }
 
-std::vector<std::shared_ptr<Student>> Window::collectImpatient() {
-    std::vector<std::shared_ptr<Student>> impatient;
+std::vector<std::shared_ptr<Student>> Window::removeExpiredQueuedStudents(int currentTime) {
+    std::vector<std::shared_ptr<Student>> expired;
     auto it = queue_.begin();
     while (it != queue_.end()) {
-        auto& student = *it;
-        student->tickPatience();
-        if (student->isImpatient()) {
-            impatient.push_back(student);
+        if ((*it)->isPatienceExpired(currentTime)) {
+            expired.push_back(*it);
             it = queue_.erase(it);
         } else {
             ++it;
         }
     }
-    return impatient;
+    return expired;
+}
+
+std::shared_ptr<Student> Window::popLongestWaitingQueuedStudent() {
+    if (queue_.empty()) {
+        return nullptr;
+    }
+    auto student = queue_.front();
+    queue_.pop_front();
+    return student;
+}
+
+void Window::startNextIfNeeded(int currentTime) {
+    if (currentStudent_ || queue_.empty()) {
+        return;
+    }
+    currentStudent_ = queue_.front();
+    queue_.pop_front();
+    currentStudent_->startService(currentTime);
+    remainingServiceTime_ = std::max(1, static_cast<int>(std::ceil(currentStudent_->getServiceTime() / efficiency_)));
 }
 
 } // namespace bdss::core

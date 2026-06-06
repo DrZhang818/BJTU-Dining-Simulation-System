@@ -1,14 +1,19 @@
+# Build artifacts
 build/
+build_*/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
-*.o
-*.obj
-*.exe
-*.user
-.DS_Store
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# Generated simulation outputs
 simulation_log.csv
-statistics_test.csv
-regression_check.csv
-.cache/
-.cursor/
+*.csv
+*.png
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

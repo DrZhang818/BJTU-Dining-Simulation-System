@@ -1,0 +1,32 @@
+{
+  "windowCount": 6,
+  "tableRows": 6,
+  "tableCols": 8,
+  "totalSimulationTime": 3600,
+  "randomSeed": 31415,
+  "arrivalRate": 8.0,
+  "avgServiceTime": 24,
+  "serviceStddev": 4,
+  "avgDiningTime": 1100,
+  "diningStddev": 120,
+  "arrivalPattern": "RushPeaks",
+  "windowEfficiency": "Variable",
+  "rushPeaks": [
+    { "start": 600, "end": 2100, "multiplier": 2.3 }
+  ],
+  "enableWindowPreferences": true,
+  "windowCategories": ["米饭套餐", "面食", "麻辣烫", "清真窗口", "轻食沙拉", "快餐"],
+  "enablePatience": true,
+  "avgPatienceTime": 300,
+  "patienceStddev": 60,
+  "queueSwitchProbability": 0.10,
+  "enableTakeaway": true,
+  "takeawayRate": 0.14,
+  "packingServiceFactor": 1.3,
+  "enableCleaning": true,
+  "cleaningTime": 45,
+  "enableGroupDining": true,
+  "groupProbability": 0.30,
+  "maxGroupSize": 4,
+  "enableSeatPreference": true
+}

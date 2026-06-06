@@ -1,24 +1,27 @@
 #pragma once
 
+#include "core/SimulationEngine.h"
+
 #include <QWidget>
 
-namespace bdss::core {
-class SimulationEngine;
-} // namespace bdss::core
+class QPainter;
 
 namespace bdss::gui {
 
-class RenderWidget final : public QWidget {
-    Q_OBJECT
+class RenderWidget : public QWidget {
 public:
     explicit RenderWidget(QWidget* parent = nullptr);
-
     void setEngine(const bdss::core::SimulationEngine* engine);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    void drawEmptyState(QPainter& painter, const QRect& rect);
+    void drawWindows(QPainter& painter, const QRect& rect);
+    void drawSeats(QPainter& painter, const QRect& rect);
+    void drawLegend(QPainter& painter, const QRect& rect);
+
     const bdss::core::SimulationEngine* engine_ = nullptr;
 };
 

@@ -1,163 +1,130 @@
 #include "core/Student.h"
 
 #include <algorithm>
-#include <ostream>
-#include <stdexcept>
+#include <utility>
 
 namespace bdss::core {
 
-std::string toString(StudentState state) {
-    switch (state) {
-    case StudentState::Arrived:
-        return "Arrived";
-    case StudentState::Queuing:
-        return "Queuing";
-    case StudentState::Serving:
-        return "Serving";
-    case StudentState::WaitingForSeat:
-        return "WaitingForSeat";
-    case StudentState::Dining:
-        return "Dining";
-    case StudentState::Left:
-        return "Left";
-    }
-    return "Unknown";
-}
-
-Student::Student(int id, int arrivalTime, int serviceTime, int diningTime)
+Student::Student(int id,
+                 int arrivalTime,
+                 int serviceTime,
+                 int diningTime,
+                 std::string typeName,
+                 std::string preferredCategory,
+                 bool takeaway,
+                 int patienceSeconds,
+                 int groupId,
+                 int groupSize)
     : id_(id),
       arrivalTime_(arrivalTime),
       serviceTime_(std::max(1, serviceTime)),
       diningTime_(std::max(1, diningTime)),
-      remainingServiceTime_(std::max(1, serviceTime)),
-      remainingDiningTime_(std::max(1, diningTime)) {
-    if (id <= 0) {
-        throw std::invalid_argument("Student id must be positive");
+      typeName_(std::move(typeName)),
+      preferredCategory_(std::move(preferredCategory)),
+      takeaway_(takeaway),
+      patienceSeconds_(std::max(1, patienceSeconds)),
+      groupId_(groupId),
+      groupSize_(std::max(1, groupSize)),
+      queueEntryTime_(arrivalTime) {}
+
+void Student::enterQueue(int currentTime, int windowId) {
+    if (state_ == StudentState::Queued && queueEntryTime_ >= 0 && currentTime > queueEntryTime_) {
+        accumulatedQueueWait_ += currentTime - queueEntryTime_;
     }
-    if (arrivalTime < 0) {
-        throw std::invalid_argument("arrivalTime must be non-negative");
-    }
+    queueEntryTime_ = currentTime;
+    assignedWindowId_ = windowId;
+    state_ = StudentState::Queued;
 }
 
-void Student::setServiceTime(int seconds) {
-    if (state_ != StudentState::Arrived) {
-        throw std::logic_error("service time can only be adjusted before queuing");
-    }
-    serviceTime_ = std::max(1, seconds);
-    remainingServiceTime_ = serviceTime_;
-}
-
-void Student::startQueuing(int now) {
-    if (state_ != StudentState::Arrived) {
-        throw std::logic_error("student can queue only after arrival");
-    }
-    queueStartTime_ = now;
-    state_ = StudentState::Queuing;
-}
-
-void Student::startServing(int now) {
-    if (state_ != StudentState::Queuing) {
-        throw std::logic_error("student can start service only from queue");
-    }
-    serviceStartTime_ = now;
-    state_ = StudentState::Serving;
-}
-
-bool Student::advanceServiceOneSecond() {
-    if (state_ != StudentState::Serving) {
-        throw std::logic_error("cannot advance service for non-serving student");
-    }
-    if (remainingServiceTime_ > 0) {
-        --remainingServiceTime_;
-    }
-    return remainingServiceTime_ <= 0;
-}
-
-void Student::finishServiceAndWaitForSeat(int now) {
-    if (state_ != StudentState::Serving && state_ != StudentState::Queuing) {
-        throw std::logic_error("student cannot finish service from current state");
-    }
-    remainingServiceTime_ = 0;
+void Student::startService(int currentTime) {
+    state_ = StudentState::BeingServed;
     if (serviceStartTime_ < 0) {
-        serviceStartTime_ = now;
+        if (queueEntryTime_ >= 0) {
+            accumulatedQueueWait_ += std::max(0, currentTime - queueEntryTime_);
+        }
+        serviceStartTime_ = currentTime;
     }
-    serviceEndTime_ = now;
+}
+
+void Student::finishService(int currentTime) {
+    serviceEndTime_ = currentTime;
+    if (takeaway_) {
+        finishedTime_ = currentTime;
+        state_ = StudentState::Finished;
+    } else {
+        state_ = StudentState::WaitingForSeat;
+    }
+}
+
+void Student::startWaitingForSeat(int currentTime) {
+    seatWaitStartTime_ = currentTime;
     state_ = StudentState::WaitingForSeat;
 }
 
-void Student::startDining(int now, int row, int col) {
-    if (state_ != StudentState::WaitingForSeat) {
-        throw std::logic_error("student can start dining only after service");
-    }
-    diningStartTime_ = now;
-    seatRow_ = row;
-    seatCol_ = col;
+void Student::startDining(int currentTime) {
+    diningStartTime_ = currentTime;
     state_ = StudentState::Dining;
 }
 
-bool Student::advanceDiningOneSecond() {
-    if (state_ != StudentState::Dining) {
-        throw std::logic_error("cannot advance dining for non-dining student");
-    }
-    if (remainingDiningTime_ > 0) {
-        --remainingDiningTime_;
-    }
-    return remainingDiningTime_ <= 0;
+void Student::finishDining(int currentTime) {
+    finishedTime_ = currentTime;
+    state_ = StudentState::Finished;
 }
 
-void Student::finishDiningAndLeave(int now) {
-    if (state_ != StudentState::Dining) {
-        throw std::logic_error("student can leave only after dining");
-    }
-    remainingDiningTime_ = 0;
-    leaveTime_ = now;
-    state_ = StudentState::Left;
+void Student::drop(int currentTime) {
+    droppedTime_ = currentTime;
+    state_ = StudentState::Dropped;
 }
 
-int Student::getQueueWaitTime() const noexcept {
-    if (serviceStartTime_ < 0) {
+int Student::queueWaitingTimeAt(int currentTime) const {
+    if (serviceStartTime_ >= 0) {
+        return accumulatedQueueWait_;
+    }
+    return accumulatedQueueWait_ + currentQueueWaitingTimeAt(currentTime);
+}
+
+int Student::currentQueueWaitingTimeAt(int currentTime) const {
+    return std::max(0, currentTime - queueEntryTime_);
+}
+
+bool Student::isPatienceExpired(int currentTime) const {
+    return state_ == StudentState::Queued && currentQueueWaitingTimeAt(currentTime) >= patienceSeconds_;
+}
+
+int Student::getQueueWaitingTime() const {
+    return accumulatedQueueWait_;
+}
+
+int Student::getSeatWaitingTime() const {
+    if (takeaway_) {
         return 0;
     }
-    const auto start = queueStartTime_ >= 0 ? queueStartTime_ : arrivalTime_;
-    return std::max(0, serviceStartTime_ - start);
-}
-
-int Student::getSeatWaitTime() const noexcept {
-    if (serviceEndTime_ < 0 || diningStartTime_ < 0) {
-        return 0;
+    if (seatWaitStartTime_ >= 0 && diningStartTime_ >= 0) {
+        return diningStartTime_ - seatWaitStartTime_;
     }
-    return std::max(0, diningStartTime_ - serviceEndTime_);
+    return 0;
 }
 
-int Student::getActualServiceTime() const noexcept {
-    if (serviceStartTime_ < 0 || serviceEndTime_ < 0) {
-        return 0;
+int Student::getTotalSystemTime() const {
+    if (finishedTime_ >= 0) {
+        return finishedTime_ - arrivalTime_;
     }
-    return std::max(0, serviceEndTime_ - serviceStartTime_);
-}
-
-int Student::getActualDiningTime() const noexcept {
-    if (diningStartTime_ < 0 || leaveTime_ < 0) {
-        return 0;
+    if (droppedTime_ >= 0) {
+        return droppedTime_ - arrivalTime_;
     }
-    return std::max(0, leaveTime_ - diningStartTime_);
+    return 0;
 }
 
-int Student::getTotalTime() const noexcept {
-    if (leaveTime_ < 0) {
-        return 0;
+std::string toString(StudentState state) {
+    switch (state) {
+        case StudentState::Queued: return "queued";
+        case StudentState::BeingServed: return "being_served";
+        case StudentState::WaitingForSeat: return "waiting_for_seat";
+        case StudentState::Dining: return "dining";
+        case StudentState::Finished: return "finished";
+        case StudentState::Dropped: return "dropped";
     }
-    return std::max(0, leaveTime_ - arrivalTime_);
-}
-
-std::ostream& operator<<(std::ostream& os, const Student& student) {
-    os << "Student{id=" << student.getId()
-       << ", state=" << toString(student.getState())
-       << ", arrival=" << student.getArrivalTime()
-       << ", service=" << student.getServiceTime()
-       << ", dining=" << student.getDiningTime()
-       << '}';
-    return os;
+    return "unknown";
 }
 
 } // namespace bdss::core

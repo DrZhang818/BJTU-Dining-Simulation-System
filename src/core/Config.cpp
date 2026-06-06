@@ -1,86 +1,187 @@
 #include "core/Config.h"
 
+#include "utils/SimpleJson.h"
+
 #include <algorithm>
-#include <cctype>
 #include <fstream>
 #include <iomanip>
-#include <regex>
 #include <sstream>
 #include <stdexcept>
-#include <string>
+#include <utility>
 
 namespace bdss::core {
 namespace {
+using bdss::utils::JsonValue;
 
-std::string readAll(const std::filesystem::path& path) {
-    std::ifstream input(path);
-    if (!input) {
-        throw std::runtime_error("cannot open config file: " + path.string());
+const JsonValue* member(const JsonValue& object, const std::string& key) {
+    return object.find(key);
+}
+
+int getInt(const JsonValue& object, const std::string& key, int fallback) {
+    const JsonValue* value = member(object, key);
+    return value ? value->asInt(fallback) : fallback;
+}
+
+double getDouble(const JsonValue& object, const std::string& key, double fallback) {
+    const JsonValue* value = member(object, key);
+    return value ? value->asNumber(fallback) : fallback;
+}
+
+bool getBool(const JsonValue& object, const std::string& key, bool fallback) {
+    const JsonValue* value = member(object, key);
+    return value ? value->asBool(fallback) : fallback;
+}
+
+std::string getString(const JsonValue& object, const std::string& key, std::string fallback) {
+    const JsonValue* value = member(object, key);
+    return value ? value->asStringOr(std::move(fallback)) : std::move(fallback);
+}
+
+std::vector<std::string> getStringArray(const JsonValue& object,
+                                        const std::string& key,
+                                        std::vector<std::string> fallback) {
+    const JsonValue* value = member(object, key);
+    if (!value || !value->isArray()) {
+        return fallback;
     }
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-    return buffer.str();
-}
-
-std::string trim(std::string value) {
-    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    });
-    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    }).base();
-    if (first >= last) {
-        return {};
-    }
-    return std::string(first, last);
-}
-
-std::string lower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
-template <typename T>
-void readNumber(const std::string& text, const std::string& key, T& target) {
-    std::smatch match;
-    if (std::regex_search(text, match,
-            std::regex("\\\"" + key + "\\\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)"))) {
-        std::istringstream(match[1].str()) >> target;
-    }
-}
-
-void readString(const std::string& text, const std::string& key, std::string& target) {
-    const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
-    std::smatch match;
-    if (std::regex_search(text, match, pattern)) {
-        target = trim(match[1].str());
-    }
-}
-
-void readBool(const std::string& text, const std::string& key, bool& target) {
-    const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*(true|false)");
-    std::smatch match;
-    if (std::regex_search(text, match, pattern)) {
-        target = (match[1].str() == "true");
-    }
-}
-
-void readStringArray(const std::string& text, const std::string& key, std::vector<std::string>& target) {
-    // JSON array: ["a", "b", "c"]
-    const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*\\[([^\\]]*)\\]");
-    std::smatch match;
-    if (std::regex_search(text, match, pattern)) {
-        target.clear();
-        std::string content = match[1].str();
-        // Extract quoted strings
-        std::regex itemPattern("\\\"([^\\\"]*)\\\"");
-        std::sregex_iterator it(content.begin(), content.end(), itemPattern);
-        std::sregex_iterator end;
-        for (; it != end; ++it) {
-            target.push_back(trim((*it)[1].str()));
+    std::vector<std::string> result;
+    for (const JsonValue& item : value->asArray()) {
+        if (item.isString()) {
+            result.push_back(item.asString());
         }
+    }
+    return result.empty() ? std::move(fallback) : result;
+}
+
+JsonValue::Array toArray(const std::vector<std::string>& values) {
+    JsonValue::Array array;
+    for (const auto& value : values) {
+        array.emplace_back(value);
+    }
+    return array;
+}
+
+JsonValue::Array rushPeakArray(const std::vector<RushPeak>& peaks) {
+    JsonValue::Array array;
+    for (const auto& peak : peaks) {
+        JsonValue::Object obj;
+        obj["start"] = formatClockTime(peak.start);
+        obj["end"] = formatClockTime(peak.end);
+        obj["multiplier"] = peak.multiplier;
+        array.emplace_back(obj);
+    }
+    return array;
+}
+
+JsonValue::Array windowProfileArray(const std::vector<WindowProfile>& profiles) {
+    JsonValue::Array array;
+    for (const auto& profile : profiles) {
+        JsonValue::Object obj;
+        obj["name"] = profile.name;
+        obj["category"] = profile.category;
+        obj["efficiency"] = profile.efficiency;
+        array.emplace_back(obj);
+    }
+    return array;
+}
+
+JsonValue::Array studentTypeArray(const std::vector<StudentTypeProfile>& profiles) {
+    JsonValue::Array array;
+    for (const auto& profile : profiles) {
+        JsonValue::Object obj;
+        obj["name"] = profile.name;
+        obj["ratio"] = profile.ratio;
+        obj["diningTimeFactor"] = profile.diningTimeFactor;
+        obj["patienceFactor"] = profile.patienceFactor;
+        array.emplace_back(obj);
+    }
+    return array;
+}
+
+int secondsFromJsonValue(const JsonValue& value, int fallback) {
+    if (value.isString()) {
+        return parseClockTimeToSeconds(value.asString());
+    }
+    if (value.isNumber()) {
+        return value.asInt(fallback);
+    }
+    return fallback;
+}
+
+std::vector<RushPeak> parseRushPeaks(const JsonValue& root, std::vector<RushPeak> fallback) {
+    const JsonValue* value = member(root, "rushPeaks");
+    if (!value || !value->isArray()) {
+        if (root.contains("rushHourStart") || root.contains("rushHourEnd") || root.contains("rushHourMultiplier")) {
+            RushPeak peak;
+            peak.start = getInt(root, "rushHourStart", peak.start);
+            peak.end = getInt(root, "rushHourEnd", peak.end);
+            peak.multiplier = getDouble(root, "rushHourMultiplier", peak.multiplier);
+            return {peak};
+        }
+        return fallback;
+    }
+
+    std::vector<RushPeak> result;
+    for (const auto& item : value->asArray()) {
+        if (!item.isObject()) {
+            continue;
+        }
+        RushPeak peak;
+        if (const JsonValue* start = item.find("start")) {
+            peak.start = secondsFromJsonValue(*start, peak.start);
+        }
+        if (const JsonValue* end = item.find("end")) {
+            peak.end = secondsFromJsonValue(*end, peak.end);
+        }
+        peak.multiplier = getDouble(item, "multiplier", peak.multiplier);
+        result.push_back(peak);
+    }
+    return result.empty() ? std::move(fallback) : result;
+}
+
+std::vector<WindowProfile> parseWindowProfiles(const JsonValue& root) {
+    std::vector<WindowProfile> result;
+    const JsonValue* value = member(root, "windowProfiles");
+    if (!value || !value->isArray()) {
+        return result;
+    }
+    for (const auto& item : value->asArray()) {
+        if (!item.isObject()) {
+            continue;
+        }
+        WindowProfile profile;
+        profile.name = getString(item, "name", profile.name);
+        profile.category = getString(item, "category", profile.category);
+        profile.efficiency = getDouble(item, "efficiency", profile.efficiency);
+        result.push_back(profile);
+    }
+    return result;
+}
+
+std::vector<StudentTypeProfile> parseStudentTypes(const JsonValue& root,
+                                                  std::vector<StudentTypeProfile> fallback) {
+    const JsonValue* value = member(root, "studentTypes");
+    if (!value || !value->isArray()) {
+        return fallback;
+    }
+    std::vector<StudentTypeProfile> result;
+    for (const auto& item : value->asArray()) {
+        if (!item.isObject()) {
+            continue;
+        }
+        StudentTypeProfile profile;
+        profile.name = getString(item, "name", profile.name);
+        profile.ratio = getDouble(item, "ratio", profile.ratio);
+        profile.diningTimeFactor = getDouble(item, "diningTimeFactor", profile.diningTimeFactor);
+        profile.patienceFactor = getDouble(item, "patienceFactor", profile.patienceFactor);
+        result.push_back(profile);
+    }
+    return result.empty() ? std::move(fallback) : result;
+}
+
+void require(bool condition, const std::string& message) {
+    if (!condition) {
+        throw std::invalid_argument("Invalid configuration: " + message);
     }
 }
 
@@ -88,332 +189,291 @@ void readStringArray(const std::string& text, const std::string& key, std::vecto
 
 std::string toString(ArrivalPattern pattern) {
     switch (pattern) {
-    case ArrivalPattern::Uniform:
-        return "Uniform";
-    case ArrivalPattern::RushHour:
-        return "RushHour";
+        case ArrivalPattern::Steady: return "Steady";
+        case ArrivalPattern::RushPeaks: return "RushPeaks";
     }
-    return "Unknown";
+    return "Steady";
 }
 
 std::string toString(WindowEfficiency efficiency) {
     switch (efficiency) {
-    case WindowEfficiency::Equal:
-        return "Equal";
-    case WindowEfficiency::Variable:
-        return "Variable";
+        case WindowEfficiency::Uniform: return "Uniform";
+        case WindowEfficiency::Variable: return "Variable";
+        case WindowEfficiency::Custom: return "Custom";
     }
-    return "Unknown";
+    return "Uniform";
 }
 
-std::string toString(ProfileType type) {
-    switch (type) {
-    case ProfileType::Undergrad:
-        return "Undergrad";
-    case ProfileType::Grad:
-        return "Grad";
-    case ProfileType::Staff:
-        return "Staff";
+ArrivalPattern arrivalPatternFromString(const std::string& text) {
+    if (text == "RushPeaks" || text == "RushHour" || text == "rush") {
+        return ArrivalPattern::RushPeaks;
     }
-    return "Unknown";
+    return ArrivalPattern::Steady;
 }
 
-ArrivalPattern parseArrivalPattern(const std::string& value) {
-    const auto normalized = lower(trim(value));
-    if (normalized == "uniform" || normalized == "flat" || normalized == "constant") {
-        return ArrivalPattern::Uniform;
-    }
-    if (normalized == "rushhour" || normalized == "rush_hour" || normalized == "rush-hour") {
-        return ArrivalPattern::RushHour;
-    }
-    throw std::invalid_argument("unsupported arrivalPattern: " + value);
-}
-
-WindowEfficiency parseWindowEfficiency(const std::string& value) {
-    const auto normalized = lower(trim(value));
-    if (normalized == "equal" || normalized == "same" || normalized == "constant") {
-        return WindowEfficiency::Equal;
-    }
-    if (normalized == "variable" || normalized == "varied") {
+WindowEfficiency windowEfficiencyFromString(const std::string& text) {
+    if (text == "Variable" || text == "variable") {
         return WindowEfficiency::Variable;
     }
-    throw std::invalid_argument("unsupported windowEfficiency: " + value);
+    if (text == "Custom" || text == "custom") {
+        return WindowEfficiency::Custom;
+    }
+    return WindowEfficiency::Uniform;
 }
 
-ProfileType parseProfileType(const std::string& value) {
-    const auto normalized = lower(trim(value));
-    if (normalized == "undergrad" || normalized == "undergraduate" || normalized == "本科") {
-        return ProfileType::Undergrad;
+int parseClockTimeToSeconds(const std::string& text) {
+    int h = 0;
+    int m = 0;
+    int s = 0;
+    char sep1 = '\0';
+    char sep2 = '\0';
+    std::istringstream iss(text);
+    if (!(iss >> h >> sep1 >> m) || sep1 != ':') {
+        return 0;
     }
-    if (normalized == "grad" || normalized == "graduate" || normalized == "研究生") {
-        return ProfileType::Grad;
-    }
-    if (normalized == "staff" || normalized == "教职工") {
-        return ProfileType::Staff;
-    }
-    throw std::invalid_argument("unsupported profileType: " + value);
-}
-
-Config Config::loadFromFile(const std::filesystem::path& path) {
-    Config config;
-    const auto text = readAll(path);
-
-    readNumber(text, "windowCount", config.windowCount);
-    readNumber(text, "tableRows", config.tableRows);
-    readNumber(text, "tableCols", config.tableCols);
-    readNumber(text, "totalSimulationTime", config.totalSimulationTime);
-    readNumber(text, "arrivalRate", config.arrivalRate);
-    readNumber(text, "avgServiceTime", config.avgServiceTime);
-    readNumber(text, "avgDiningTime", config.avgDiningTime);
-    readNumber(text, "serviceStddev", config.serviceStddev);
-    readNumber(text, "diningStddev", config.diningStddev);
-    readNumber(text, "randomSeed", config.randomSeed);
-    // 多段高峰：JSON array 格式 [{"start":600,"end":2700,"multiplier":2},{"start":3900,"end":5100,"multiplier":1.8}]
-    {
-        std::smatch m;
-        if (std::regex_search(text, m, std::regex("\\\"rushPeaks\\\"\\s*:\\s*\\[([^\\]]*)\\]"))) {
-            std::vector<Config::RushPeak> peaks;
-            std::string content = m[1].str();
-            std::regex peakRe("\\{[^}]*\\}");
-            std::sregex_iterator it(content.begin(), content.end(), peakRe);
-            for (; it != std::sregex_iterator(); ++it) {
-                std::string block = it->str();
-                Config::RushPeak peak;
-                readNumber(block, "start", peak.start);
-                readNumber(block, "end", peak.end);
-                readNumber(block, "multiplier", peak.multiplier);
-                peaks.push_back(peak);
-            }
-            if (!peaks.empty()) config.rushPeaks = peaks;
+    if (iss >> sep2 >> s) {
+        if (sep2 != ':') {
+            s = 0;
         }
     }
+    h = std::clamp(h, 0, 23);
+    m = std::clamp(m, 0, 59);
+    s = std::clamp(s, 0, 59);
+    return h * 3600 + m * 60 + s;
+}
 
-    std::string arrivalPatternText = bdss::core::toString(config.arrivalPattern);
-    std::string windowEfficiencyText = bdss::core::toString(config.windowEfficiency);
-    readString(text, "arrivalPattern", arrivalPatternText);
-    readString(text, "windowEfficiency", windowEfficiencyText);
-    config.arrivalPattern = parseArrivalPattern(arrivalPatternText);
-    config.windowEfficiency = parseWindowEfficiency(windowEfficiencyText);
+std::string formatClockTime(int seconds) {
+    seconds = ((seconds % (24 * 3600)) + 24 * 3600) % (24 * 3600);
+    const int h = seconds / 3600;
+    const int m = (seconds % 3600) / 60;
+    const int s = seconds % 60;
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0') << h << ':'
+        << std::setw(2) << std::setfill('0') << m;
+    if (s != 0) {
+        oss << ':' << std::setw(2) << std::setfill('0') << s;
+    }
+    return oss.str();
+}
 
-    // ---- 偏好系统字段 ----（缺失时保持默认值）
-    readBool(text, "enablePreferences", config.enablePreferences);
-    readNumber(text, "ratioUndergrad", config.ratioUndergrad);
-    readNumber(text, "ratioGrad", config.ratioGrad);
-    readNumber(text, "ratioStaff", config.ratioStaff);
-    readNumber(text, "undergradDiningFactor", config.undergradDiningFactor);
-    readNumber(text, "staffDiningFactor", config.staffDiningFactor);
-    readNumber(text, "queueLengthWeight", config.queueLengthWeight);
-    readNumber(text, "preferenceBonus", config.preferenceBonus);
-    readStringArray(text, "windowCategories", config.windowCategories);
+void Config::normalize() {
+    if (windowCategories.empty()) {
+        windowCategories = {"综合窗口"};
+    }
+    if (rushPeaks.empty()) {
+        rushPeaks = {{900, 2400, 2.4}};
+    }
+    if (studentTypes.empty()) {
+        studentTypes = {{"本科生", 0.65, 0.85, 1.00},
+                        {"研究生", 0.25, 1.00, 1.10},
+                        {"教职工", 0.10, 1.25, 1.25}};
+    }
+    double ratioSum = 0.0;
+    for (const auto& type : studentTypes) {
+        ratioSum += std::max(0.0, type.ratio);
+    }
+    if (ratioSum <= 0.0) {
+        studentTypes = {{"本科生", 1.0, 1.0, 1.0}};
+    }
 
-    // ---- Phase 2 字段 ----
-    readBool(text, "enablePatience", config.enablePatience);
-    readNumber(text, "patienceBase", config.patienceBase);
-    readNumber(text, "patienceStddev", config.patienceStddev);
-    readBool(text, "patienceAllowSwitch", config.patienceAllowSwitch);
-    readBool(text, "enablePacking", config.enablePacking);
-    readNumber(text, "packingRatio", config.packingRatio);
-    readNumber(text, "packingServiceFactor", config.packingServiceFactor);
-    readBool(text, "enableCleaning", config.enableCleaning);
-    readNumber(text, "cleaningTime", config.cleaningTime);
-    readBool(text, "enableGroupDining", config.enableGroupDining);
-    readNumber(text, "groupRatio", config.groupRatio);
-    readNumber(text, "groupSizeMin", config.groupSizeMin);
-    readNumber(text, "groupSizeMax", config.groupSizeMax);
+    if (windowCount > 0) {
+        if (windowProfiles.size() > static_cast<std::size_t>(windowCount)) {
+            windowProfiles.resize(static_cast<std::size_t>(windowCount));
+        }
+        while (windowProfiles.size() < static_cast<std::size_t>(windowCount)) {
+            windowProfiles.push_back(WindowProfile{});
+        }
+        for (int i = 0; i < windowCount; ++i) {
+            auto& profile = windowProfiles[static_cast<std::size_t>(i)];
+            if (profile.name.empty()) {
+                profile.name = "窗口 " + std::to_string(i + 1);
+            }
+            if (profile.category.empty()) {
+                profile.category = windowCategories[static_cast<std::size_t>(i) % windowCategories.size()];
+            }
+            if (profile.efficiency <= 0.0) {
+                profile.efficiency = 1.0;
+            }
+        }
+    }
+}
 
-    // ---- 座位偏好字段 ----
-    readBool(text, "enableSeatPreference", config.enableSeatPreference);
-    readNumber(text, "windowProximityWeight", config.windowProximityWeight);
-    readNumber(text, "groupProximityWeight", config.groupProximityWeight);
-    readNumber(text, "isolationWeight", config.isolationWeight);
+void Config::validate() const {
+    require(windowCount > 0 && windowCount <= 100, "windowCount must be between 1 and 100");
+    require(tableRows > 0 && tableRows <= 80, "tableRows must be between 1 and 80");
+    require(tableCols > 0 && tableCols <= 80, "tableCols must be between 1 and 80");
+    require(totalSimulationTime > 0 && totalSimulationTime <= 24 * 3600, "totalSimulationTime must be within one day");
+    require(arrivalRate >= 0.0, "arrivalRate must be non-negative");
+    require(avgServiceTime > 0, "avgServiceTime must be positive");
+    require(serviceStddev >= 0.0, "serviceStddev must be non-negative");
+    require(avgDiningTime > 0, "avgDiningTime must be positive");
+    require(diningStddev >= 0.0, "diningStddev must be non-negative");
+    require(!windowCategories.empty(), "windowCategories must not be empty");
+    require(queueWeight >= 0.0, "queueWeight must be non-negative");
+    require(efficiencyWeight >= 0.0, "efficiencyWeight must be non-negative");
+    require(avgPatienceTime > 0.0, "avgPatienceTime must be positive");
+    require(patienceStddev >= 0.0, "patienceStddev must be non-negative");
+    require(queueSwitchProbability >= 0.0 && queueSwitchProbability <= 1.0, "queueSwitchProbability must be in [0, 1]");
+    require(takeawayRate >= 0.0 && takeawayRate <= 1.0, "takeawayRate must be in [0, 1]");
+    require(packingServiceFactor >= 1.0, "packingServiceFactor must be at least 1.0");
+    require(cleaningTime >= 0, "cleaningTime must be non-negative");
+    require(groupProbability >= 0.0 && groupProbability <= 1.0, "groupProbability must be in [0, 1]");
+    require(maxGroupSize >= 1 && maxGroupSize <= 12, "maxGroupSize must be between 1 and 12");
+    require(nearWindowWeight >= 0.0, "nearWindowWeight must be non-negative");
+    require(groupAdjacencyBonus >= 0.0, "groupAdjacencyBonus must be non-negative");
+    require(strangerSpacingPenalty >= 0.0, "strangerSpacingPenalty must be non-negative");
 
+    for (const auto& peak : rushPeaks) {
+        require(peak.start >= 0 && peak.end >= 0 && peak.start < 24 * 3600 && peak.end <= 24 * 3600,
+                "rush peak times must be within one day");
+        require(peak.start < peak.end, "rush peak start must be earlier than end");
+        require(peak.multiplier >= 0.0, "rush peak multiplier must be non-negative");
+    }
+
+    double ratioSum = 0.0;
+    for (const auto& profile : studentTypes) {
+        require(!profile.name.empty(), "student type name must not be empty");
+        require(profile.ratio >= 0.0, "student type ratio must be non-negative");
+        require(profile.diningTimeFactor > 0.0, "student diningTimeFactor must be positive");
+        require(profile.patienceFactor > 0.0, "student patienceFactor must be positive");
+        ratioSum += profile.ratio;
+    }
+    require(!studentTypes.empty() && ratioSum > 0.0, "studentTypes must contain positive ratios");
+
+    for (const auto& profile : windowProfiles) {
+        require(profile.efficiency > 0.0, "custom window efficiency must be positive");
+    }
+}
+
+Config Config::loadFromFile(const std::filesystem::path& filePath) {
+    std::ifstream input(filePath);
+    if (!input) {
+        throw std::runtime_error("Cannot open config file: " + filePath.string());
+    }
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    JsonValue root = JsonValue::parse(buffer.str());
+    if (!root.isObject()) {
+        throw std::runtime_error("Config file root must be a JSON object: " + filePath.string());
+    }
+
+    Config config;
+    config.windowCount = getInt(root, "windowCount", config.windowCount);
+    config.tableRows = getInt(root, "tableRows", config.tableRows);
+    config.tableCols = getInt(root, "tableCols", config.tableCols);
+    config.totalSimulationTime = getInt(root, "totalSimulationTime", config.totalSimulationTime);
+    config.randomSeed = static_cast<unsigned int>(getInt(root, "randomSeed", static_cast<int>(config.randomSeed)));
+
+    config.arrivalRate = getDouble(root, "arrivalRate", config.arrivalRate);
+    config.avgServiceTime = getInt(root, "avgServiceTime", config.avgServiceTime);
+    config.serviceStddev = getDouble(root, "serviceStddev", config.serviceStddev);
+    config.avgDiningTime = getInt(root, "avgDiningTime", config.avgDiningTime);
+    config.diningStddev = getDouble(root, "diningStddev", config.diningStddev);
+    config.arrivalPattern = arrivalPatternFromString(getString(root, "arrivalPattern", toString(config.arrivalPattern)));
+    config.windowEfficiency = windowEfficiencyFromString(getString(root, "windowEfficiency", toString(config.windowEfficiency)));
+    config.rushPeaks = parseRushPeaks(root, config.rushPeaks);
+
+    config.enableWindowPreferences = getBool(root, "enableWindowPreferences", config.enableWindowPreferences);
+    config.enableWindowPreferences = getBool(root, "enablePreferences", config.enableWindowPreferences);
+    config.windowCategories = getStringArray(root, "windowCategories", config.windowCategories);
+    config.windowProfiles = parseWindowProfiles(root);
+    config.studentTypes = parseStudentTypes(root, config.studentTypes);
+    if (!root.contains("studentTypes") &&
+        (root.contains("ratioUndergrad") || root.contains("ratioGrad") || root.contains("ratioStaff"))) {
+        config.studentTypes = {
+            {"本科生", getDouble(root, "ratioUndergrad", 0.65), getDouble(root, "undergradDiningFactor", 0.85), 1.00},
+            {"研究生", getDouble(root, "ratioGrad", 0.25), getDouble(root, "gradDiningFactor", 1.00), 1.10},
+            {"教职工", getDouble(root, "ratioStaff", 0.10), getDouble(root, "staffDiningFactor", 1.25), 1.25}
+        };
+    }
+    config.queueWeight = getDouble(root, "queueWeight", config.queueWeight);
+    config.queueWeight = getDouble(root, "queueLengthWeight", config.queueWeight);
+    config.preferenceBonus = getDouble(root, "preferenceBonus", config.preferenceBonus);
+    config.efficiencyWeight = getDouble(root, "efficiencyWeight", config.efficiencyWeight);
+
+    config.enablePatience = getBool(root, "enablePatience", config.enablePatience);
+    config.avgPatienceTime = getDouble(root, "avgPatienceTime", config.avgPatienceTime);
+    config.avgPatienceTime = getDouble(root, "patienceBase", config.avgPatienceTime);
+    config.patienceStddev = getDouble(root, "patienceStddev", config.patienceStddev);
+    config.queueSwitchProbability = getDouble(root, "queueSwitchProbability", config.queueSwitchProbability);
+    if (const JsonValue* allowSwitch = member(root, "patienceAllowSwitch"); allowSwitch && allowSwitch->isBool() && !allowSwitch->asBool()) {
+        config.queueSwitchProbability = 0.0;
+    }
+
+    config.enableTakeaway = getBool(root, "enableTakeaway", config.enableTakeaway);
+    config.enableTakeaway = getBool(root, "enablePacking", config.enableTakeaway);
+    config.takeawayRate = getDouble(root, "takeawayRate", config.takeawayRate);
+    config.takeawayRate = getDouble(root, "packingRatio", config.takeawayRate);
+    config.packingServiceFactor = getDouble(root, "packingServiceFactor", config.packingServiceFactor);
+
+    config.enableCleaning = getBool(root, "enableCleaning", config.enableCleaning);
+    config.cleaningTime = getInt(root, "cleaningTime", config.cleaningTime);
+    config.enableGroupDining = getBool(root, "enableGroupDining", config.enableGroupDining);
+    config.groupProbability = getDouble(root, "groupProbability", config.groupProbability);
+    config.groupProbability = getDouble(root, "groupRatio", config.groupProbability);
+    config.maxGroupSize = getInt(root, "maxGroupSize", config.maxGroupSize);
+    config.maxGroupSize = getInt(root, "groupSizeMax", config.maxGroupSize);
+    config.enableSeatPreference = getBool(root, "enableSeatPreference", config.enableSeatPreference);
+    config.nearWindowWeight = getDouble(root, "nearWindowWeight", config.nearWindowWeight);
+    config.nearWindowWeight = getDouble(root, "windowProximityWeight", config.nearWindowWeight);
+    config.groupAdjacencyBonus = getDouble(root, "groupAdjacencyBonus", config.groupAdjacencyBonus);
+    config.groupAdjacencyBonus = getDouble(root, "groupProximityWeight", config.groupAdjacencyBonus);
+    config.strangerSpacingPenalty = getDouble(root, "strangerSpacingPenalty", config.strangerSpacingPenalty);
+    config.strangerSpacingPenalty = getDouble(root, "isolationWeight", config.strangerSpacingPenalty);
+
+    config.normalize();
     config.validate();
     return config;
 }
 
-void Config::validate() const {
-    if (windowCount <= 0) {
-        throw std::invalid_argument("windowCount must be positive");
-    }
-    if (tableRows <= 0 || tableCols <= 0) {
-        throw std::invalid_argument("tableRows and tableCols must be positive");
-    }
-    if (totalSimulationTime <= 0) {
-        throw std::invalid_argument("totalSimulationTime must be positive");
-    }
-    if (arrivalRate < 0.0) {
-        throw std::invalid_argument("arrivalRate must be non-negative");
-    }
-    if (avgServiceTime <= 0 || avgDiningTime <= 0) {
-        throw std::invalid_argument("avgServiceTime and avgDiningTime must be positive");
-    }
-    if (serviceStddev < 0.0 || diningStddev < 0.0) {
-        throw std::invalid_argument("serviceStddev and diningStddev must be non-negative");
-    }
-    if (rushPeaks.empty()) {
-        throw std::invalid_argument("at least one rushPeak is required");
-    }
-    for (std::size_t i = 0; i < rushPeaks.size(); ++i) {
-        if (rushPeaks[i].start < 0 || rushPeaks[i].end < rushPeaks[i].start) {
-            throw std::invalid_argument("rushPeaks[" + std::to_string(i) + "].start/end invalid");
-        }
-        if (rushPeaks[i].multiplier <= 0.0) {
-            throw std::invalid_argument("rushPeaks[" + std::to_string(i) + "].multiplier must be positive");
-        }
-    }
+void Config::saveToFile(const std::filesystem::path& filePath) const {
+    Config copy = *this;
+    copy.normalize();
+    copy.validate();
 
-    // 偏好系统校验
-    if (enablePreferences) {
-        const auto totalRatio = ratioUndergrad + ratioGrad + ratioStaff;
-        if (totalRatio <= 0.0) {
-            throw std::invalid_argument("sum of profile ratios must be positive");
-        }
-        if (undergradDiningFactor <= 0.0 || staffDiningFactor <= 0.0) {
-            throw std::invalid_argument("profile dining factors must be positive");
-        }
-        if (!windowCategories.empty() &&
-            static_cast<int>(windowCategories.size()) != windowCount) {
-            throw std::invalid_argument("windowCategories size must match windowCount when non-empty");
-        }
-        if (queueLengthWeight <= 0.0) {
-            throw std::invalid_argument("queueLengthWeight must be positive");
-        }
-    }
+    JsonValue::Object root;
+    root["windowCount"] = copy.windowCount;
+    root["tableRows"] = copy.tableRows;
+    root["tableCols"] = copy.tableCols;
+    root["totalSimulationTime"] = copy.totalSimulationTime;
+    root["randomSeed"] = static_cast<int>(copy.randomSeed);
+    root["arrivalRate"] = copy.arrivalRate;
+    root["avgServiceTime"] = copy.avgServiceTime;
+    root["serviceStddev"] = copy.serviceStddev;
+    root["avgDiningTime"] = copy.avgDiningTime;
+    root["diningStddev"] = copy.diningStddev;
+    root["arrivalPattern"] = toString(copy.arrivalPattern);
+    root["windowEfficiency"] = toString(copy.windowEfficiency);
+    root["rushPeaks"] = rushPeakArray(copy.rushPeaks);
+    root["enableWindowPreferences"] = copy.enableWindowPreferences;
+    root["windowCategories"] = toArray(copy.windowCategories);
+    root["windowProfiles"] = windowProfileArray(copy.windowProfiles);
+    root["studentTypes"] = studentTypeArray(copy.studentTypes);
+    root["queueWeight"] = copy.queueWeight;
+    root["preferenceBonus"] = copy.preferenceBonus;
+    root["efficiencyWeight"] = copy.efficiencyWeight;
+    root["enablePatience"] = copy.enablePatience;
+    root["avgPatienceTime"] = copy.avgPatienceTime;
+    root["patienceStddev"] = copy.patienceStddev;
+    root["queueSwitchProbability"] = copy.queueSwitchProbability;
+    root["enableTakeaway"] = copy.enableTakeaway;
+    root["takeawayRate"] = copy.takeawayRate;
+    root["packingServiceFactor"] = copy.packingServiceFactor;
+    root["enableCleaning"] = copy.enableCleaning;
+    root["cleaningTime"] = copy.cleaningTime;
+    root["enableGroupDining"] = copy.enableGroupDining;
+    root["groupProbability"] = copy.groupProbability;
+    root["maxGroupSize"] = copy.maxGroupSize;
+    root["enableSeatPreference"] = copy.enableSeatPreference;
+    root["nearWindowWeight"] = copy.nearWindowWeight;
+    root["groupAdjacencyBonus"] = copy.groupAdjacencyBonus;
+    root["strangerSpacingPenalty"] = copy.strangerSpacingPenalty;
 
-    // Phase 2：耐心模型校验
-    if (enablePatience) {
-        if (patienceBase <= 0.0) {
-            throw std::invalid_argument("patienceBase must be positive");
-        }
-        if (patienceStddev < 0.0) {
-            throw std::invalid_argument("patienceStddev must be non-negative");
-        }
+    std::ofstream output(filePath);
+    if (!output) {
+        throw std::runtime_error("Cannot write config file: " + filePath.string());
     }
-
-    // Phase 2：打包模式校验
-    if (enablePacking) {
-        if (packingRatio < 0.0 || packingRatio > 1.0) {
-            throw std::invalid_argument("packingRatio must be in [0, 1]");
-        }
-        if (packingServiceFactor < 1.0) {
-            throw std::invalid_argument("packingServiceFactor must be >= 1.0");
-        }
-    }
-
-    // Phase 2：清洁模式校验
-    if (enableCleaning && cleaningTime < 0) {
-        throw std::invalid_argument("cleaningTime must be non-negative");
-    }
-
-    // Phase 2：结伴就餐校验
-    if (enableGroupDining) {
-        if (groupRatio < 0.0 || groupRatio > 1.0) {
-            throw std::invalid_argument("groupRatio must be in [0, 1]");
-        }
-        if (groupSizeMin < 2 || groupSizeMax < groupSizeMin) {
-            throw std::invalid_argument("groupSizeMin/groupSizeMax invalid");
-        }
-    }
-
-    // 座位偏好校验
-    if (enableSeatPreference) {
-        if (windowProximityWeight < 0.0) {
-            throw std::invalid_argument("windowProximityWeight must be non-negative");
-        }
-        if (groupProximityWeight < 0.0) {
-            throw std::invalid_argument("groupProximityWeight must be non-negative");
-        }
-        if (isolationWeight < 0.0) {
-            throw std::invalid_argument("isolationWeight must be non-negative");
-        }
-    }
-}
-
-int Config::totalSeats() const noexcept {
-    return tableRows * tableCols;
-}
-
-double Config::arrivalRatePerSecond(int simulationTime) const noexcept {
-    auto ratePerMinute = arrivalRate;
-    if (arrivalPattern == ArrivalPattern::RushHour) {
-        for (const auto& peak : rushPeaks) {
-            if (simulationTime >= peak.start && simulationTime < peak.end) {
-                ratePerMinute *= peak.multiplier;
-                break;
-            }
-        }
-    }
-    return ratePerMinute / 60.0;
-}
-
-std::string Config::toString() const {
-    std::ostringstream os;
-    os << "windowCount=" << windowCount
-       << ", tableRows=" << tableRows
-       << ", tableCols=" << tableCols
-       << ", totalSimulationTime=" << totalSimulationTime
-       << ", arrivalRate=" << arrivalRate << " students/min"
-       << ", avgServiceTime=" << avgServiceTime
-       << ", avgDiningTime=" << avgDiningTime
-       << ", serviceStddev=" << serviceStddev
-       << ", diningStddev=" << diningStddev
-       << ", arrivalPattern=" << bdss::core::toString(arrivalPattern)
-       << ", windowEfficiency=" << bdss::core::toString(windowEfficiency)
-       << ", rushPeaks=[";
-    for (std::size_t i = 0; i < rushPeaks.size(); ++i) {
-        if (i > 0) os << ";";
-        os << "S" << rushPeaks[i].start << "E" << rushPeaks[i].end << "M" << rushPeaks[i].multiplier;
-    }
-    os << "]"
-       << ", randomSeed=" << randomSeed
-       << ", enablePreferences=" << (enablePreferences ? "true" : "false");
-    if (enablePreferences) {
-        os << ", profiles={U:" << ratioUndergrad << ",G:" << ratioGrad << ",S:" << ratioStaff << "}"
-           << ", undergradDiningFactor=" << undergradDiningFactor
-           << ", staffDiningFactor=" << staffDiningFactor
-           << ", queueLengthWeight=" << queueLengthWeight
-           << ", preferenceBonus=" << preferenceBonus;
-        if (!windowCategories.empty()) {
-            os << ", categories=[";
-            for (std::size_t i = 0; i < windowCategories.size(); ++i) {
-                if (i > 0) os << ",";
-                os << windowCategories[i];
-            }
-            os << "]";
-        }
-    }
-    os << ", enablePatience=" << (enablePatience ? "true" : "false");
-    if (enablePatience) {
-        os << ", patienceBase=" << patienceBase
-           << ", patienceStddev=" << patienceStddev
-           << ", patienceAllowSwitch=" << (patienceAllowSwitch ? "true" : "false");
-    }
-    os << ", enablePacking=" << (enablePacking ? "true" : "false");
-    if (enablePacking) {
-        os << ", packingRatio=" << packingRatio
-           << ", packingServiceFactor=" << packingServiceFactor;
-    }
-    os << ", enableCleaning=" << (enableCleaning ? "true" : "false");
-    if (enableCleaning) {
-        os << ", cleaningTime=" << cleaningTime;
-    }
-    os << ", enableGroupDining=" << (enableGroupDining ? "true" : "false");
-    if (enableGroupDining) {
-        os << ", groupRatio=" << groupRatio
-           << ", groupSizeMin=" << groupSizeMin
-           << ", groupSizeMax=" << groupSizeMax;
-    }
-    os << ", enableSeatPreference=" << (enableSeatPreference ? "true" : "false");
-    if (enableSeatPreference) {
-        os << ", windowProxWeight=" << windowProximityWeight
-           << ", groupProxWeight=" << groupProximityWeight
-           << ", isolationWeight=" << isolationWeight;
-    }
-    return os.str();
-}
-
-std::ostream& operator<<(std::ostream& os, const Config& config) {
-    return os << config.toString();
+    output << JsonValue(root).dump(2) << '\n';
 }
 
 } // namespace bdss::core

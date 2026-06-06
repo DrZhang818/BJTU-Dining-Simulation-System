@@ -1,57 +1,173 @@
 #include "core/Canteen.h"
 
 #include <algorithm>
-#include <cstdlib>
+#include <cmath>
 #include <limits>
-#include <sstream>
-#include <stdexcept>
+#include <utility>
 
 namespace bdss::core {
 
-Canteen::Canteen(int rows, int cols, int cleaningTime,
-                  double windowProxWeight, double groupProxWeight,
-                  double isolationWeight)
-    : rows_(rows),
-      cols_(cols),
-      cleaningTime_(cleaningTime),
-      windowProxWeight_(windowProxWeight),
-      groupProxWeight_(groupProxWeight),
-      isolationWeight_(isolationWeight),
-      seats_(static_cast<std::size_t>(rows),
-             std::vector<Seat>(static_cast<std::size_t>(cols))) {
-    if (rows <= 0 || cols <= 0) {
-        throw std::invalid_argument("Canteen rows and cols must be positive");
+Canteen::Canteen(int rows, int cols)
+    : rows_(std::max(1, rows)), cols_(std::max(1, cols)), seats_(static_cast<std::size_t>(rows_ * cols_)) {}
+
+void Canteen::resize(int rows, int cols) {
+    const int newRows = std::max(1, rows);
+    const int newCols = std::max(1, cols);
+    if (newRows == rows_ && newCols == cols_) {
+        return;
     }
-}
 
-double Canteen::utilization() const noexcept {
-    if (capacity() == 0) return 0.0;
-    return static_cast<double>(occupiedSeats_) / static_cast<double>(capacity()) * 100.0;
-}
-
-bool Canteen::hasEmptySeat() const noexcept {
-    for (const auto& row : seats_) {
-        for (const auto& seat : row) {
-            if (seat.isEmpty()) return true;
+    std::vector<Seat> resized(static_cast<std::size_t>(newRows * newCols));
+    const int copyRows = std::min(rows_, newRows);
+    const int copyCols = std::min(cols_, newCols);
+    for (int r = 0; r < copyRows; ++r) {
+        for (int c = 0; c < copyCols; ++c) {
+            resized[static_cast<std::size_t>(r * newCols + c)] = seatAt(r, c);
         }
     }
-    return false;
+    rows_ = newRows;
+    cols_ = newCols;
+    seats_ = std::move(resized);
 }
 
-bool Canteen::isSeatOccupied(int row, int col) const noexcept {
-    if (row < 0 || row >= rows_ || col < 0 || col >= cols_) return false;
-    return seats_[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)].student != nullptr;
+int Canteen::getOccupiedSeats() const {
+    return static_cast<int>(std::count_if(seats_.begin(), seats_.end(), [](const Seat& seat) {
+        return seat.state == SeatState::Occupied;
+    }));
 }
 
-int Canteen::countAdjacentStrangers(int r, int c, int studentGroupId) const noexcept {
+int Canteen::getCleaningSeats() const {
+    return static_cast<int>(std::count_if(seats_.begin(), seats_.end(), [](const Seat& seat) {
+        return seat.state == SeatState::Cleaning;
+    }));
+}
+
+double Canteen::getSeatUtilization() const {
+    const int total = getTotalSeats();
+    return total == 0 ? 0.0 : static_cast<double>(getOccupiedSeats()) / static_cast<double>(total);
+}
+
+bool Canteen::trySeat(const std::shared_ptr<Student>& student, int currentTime, const Config& config) {
+    if (!student || student->isTakeaway()) {
+        return true;
+    }
+
+    int bestRow = -1;
+    int bestCol = -1;
+    double bestScore = -std::numeric_limits<double>::infinity();
+
+    for (int row = 0; row < rows_; ++row) {
+        for (int col = 0; col < cols_; ++col) {
+            const Seat& seat = seatAt(row, col);
+            if (seat.state != SeatState::Available) {
+                continue;
+            }
+            const double score = scoreSeat(row, col, *student, config);
+            if (score > bestScore) {
+                bestScore = score;
+                bestRow = row;
+                bestCol = col;
+            }
+        }
+    }
+
+    if (bestRow < 0 || bestCol < 0) {
+        return false;
+    }
+
+    Seat& seat = seatAt(bestRow, bestCol);
+    seat.state = SeatState::Occupied;
+    seat.occupant = student;
+    seat.cleaningEndTime = -1;
+    student->startDining(currentTime);
+    return true;
+}
+
+std::vector<std::shared_ptr<Student>> Canteen::tick(int currentTime, const Config& config) {
+    std::vector<std::shared_ptr<Student>> finished;
+    for (Seat& seat : seats_) {
+        if (seat.state == SeatState::Occupied && seat.occupant) {
+            const int diningStart = seat.occupant->getDiningStartTime();
+            if (diningStart >= 0 && currentTime - diningStart >= seat.occupant->getDiningTime()) {
+                seat.occupant->finishDining(currentTime);
+                finished.push_back(seat.occupant);
+                seat.occupant.reset();
+                if (config.enableCleaning && config.cleaningTime > 0) {
+                    seat.state = SeatState::Cleaning;
+                    seat.cleaningEndTime = currentTime + config.cleaningTime;
+                } else {
+                    seat.state = SeatState::Available;
+                    seat.cleaningEndTime = -1;
+                }
+            }
+        }
+        if (seat.state == SeatState::Cleaning && currentTime >= seat.cleaningEndTime) {
+            seat.state = SeatState::Available;
+            seat.cleaningEndTime = -1;
+        }
+    }
+    return finished;
+}
+
+std::vector<SeatSnapshot> Canteen::getSeatSnapshots() const {
+    std::vector<SeatSnapshot> snapshots;
+    snapshots.reserve(seats_.size());
+    for (int row = 0; row < rows_; ++row) {
+        for (int col = 0; col < cols_; ++col) {
+            const Seat& seat = seatAt(row, col);
+            SeatSnapshot snapshot;
+            snapshot.row = row;
+            snapshot.col = col;
+            snapshot.state = seat.state;
+            if (seat.occupant) {
+                snapshot.studentId = seat.occupant->getId();
+                snapshot.groupId = seat.occupant->getGroupId();
+                snapshot.takeaway = seat.occupant->isTakeaway();
+                snapshot.typeName = seat.occupant->getTypeName();
+            }
+            snapshots.push_back(std::move(snapshot));
+        }
+    }
+    return snapshots;
+}
+
+double Canteen::scoreSeat(int row, int col, const Student& student, const Config& config) const {
+    if (!config.enableSeatPreference) {
+        return -static_cast<double>(row * cols_ + col);
+    }
+
+    double score = 0.0;
+    const int windowCount = std::max(1, config.windowCount);
+    const double normalizedWindow = static_cast<double>(std::max(0, student.getAssignedWindowId() - 1)) /
+                                    static_cast<double>(windowCount);
+    const double preferredCol = normalizedWindow * static_cast<double>(std::max(1, cols_ - 1));
+    const double distance = std::abs(static_cast<double>(col) - preferredCol) + 0.35 * static_cast<double>(row);
+    score -= config.nearWindowWeight * distance;
+
+    if (config.enableGroupDining && student.getGroupId() > 0 && student.getGroupSize() > 1) {
+        score += config.groupAdjacencyBonus * static_cast<double>(neighborSameGroupCount(row, col, student.getGroupId()));
+    }
+    score -= config.strangerSpacingPenalty * static_cast<double>(neighborStrangerCount(row, col, student.getGroupId()));
+    return score;
+}
+
+int Canteen::neighborSameGroupCount(int row, int col, int groupId) const {
+    if (groupId <= 0) {
+        return 0;
+    }
     int count = 0;
     for (int dr = -1; dr <= 1; ++dr) {
         for (int dc = -1; dc <= 1; ++dc) {
-            if (dr == 0 && dc == 0) continue;
-            const int nr = r + dr, nc = c + dc;
-            if (nr < 0 || nr >= rows_ || nc < 0 || nc >= cols_) continue;
-            const auto& seat = seats_[static_cast<std::size_t>(nr)][static_cast<std::size_t>(nc)];
-            if (seat.student && seat.student->getGroupId() != studentGroupId) {
+            if (dr == 0 && dc == 0) {
+                continue;
+            }
+            const int nr = row + dr;
+            const int nc = col + dc;
+            if (nr < 0 || nr >= rows_ || nc < 0 || nc >= cols_) {
+                continue;
+            }
+            const Seat& neighbor = seatAt(nr, nc);
+            if (neighbor.occupant && neighbor.occupant->getGroupId() == groupId) {
                 ++count;
             }
         }
@@ -59,166 +175,34 @@ int Canteen::countAdjacentStrangers(int r, int c, int studentGroupId) const noex
     return count;
 }
 
-std::pair<int, int> Canteen::findBestSeat(int windowVirtualCol,
-                                           int groupCentroidRow,
-                                           int groupCentroidCol,
-                                           int studentGroupId) const {
-    int bestR = -1, bestC = -1;
-    double bestScore = std::numeric_limits<double>::max();
-
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c < cols_; ++c) {
-            const auto& seat = seats_[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
-            if (!seat.isEmpty()) continue;
-
-            double score = 0.0;
-
-            // 窗口就近：曼哈顿距离（窗口虚拟在 row=-1）
-            if (windowVirtualCol >= 0) {
-                score += windowProxWeight_ * static_cast<double>(r + 1 + std::abs(c - windowVirtualCol));
+int Canteen::neighborStrangerCount(int row, int col, int groupId) const {
+    int count = 0;
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) {
+                continue;
             }
-
-            // 结伴邻桌：到已就座组员质心的曼哈顿距离
-            if (groupCentroidRow >= 0) {
-                score += groupProxWeight_ * static_cast<double>(std::abs(r - groupCentroidRow) + std::abs(c - groupCentroidCol));
+            const int nr = row + dr;
+            const int nc = col + dc;
+            if (nr < 0 || nr >= rows_ || nc < 0 || nc >= cols_) {
+                continue;
             }
-
-            // 陌生人距离感
-            score += isolationWeight_ * static_cast<double>(countAdjacentStrangers(r, c, studentGroupId));
-
-            if (score < bestScore) {
-                bestScore = score;
-                bestR = r;
-                bestC = c;
+            const Seat& neighbor = seatAt(nr, nc);
+            if (neighbor.occupant && (groupId <= 0 || neighbor.occupant->getGroupId() != groupId)) {
+                ++count;
             }
         }
     }
-    return {bestR, bestC};
+    return count;
 }
 
-bool Canteen::trySeat(const std::shared_ptr<Student>& student, int now,
-                       int windowVirtualCol) {
-    if (!student) {
-        throw std::invalid_argument("cannot seat null student");
+std::string toString(SeatState state) {
+    switch (state) {
+        case SeatState::Available: return "available";
+        case SeatState::Occupied: return "occupied";
+        case SeatState::Cleaning: return "cleaning";
     }
-    const int gid = student->getGroupId();
-    auto [row, col] = findBestSeat(windowVirtualCol, -1, -1, gid);
-    if (row < 0) {
-        return false;
-    }
-    auto& seat = seats_[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)];
-    seat.student = student;
-    seat.cleaningLeft = 0;
-    ++occupiedSeats_;
-    student->startDining(now, row, col);
-    return true;
-}
-
-int Canteen::tryGroupSeat(const std::vector<std::shared_ptr<Student>>& group, int now,
-                           int windowVirtualCol) {
-    const int need = static_cast<int>(group.size());
-    if (need <= 0) return 0;
-    if (need == 1) {
-        return trySeat(group[0], now, windowVirtualCol) ? 1 : 0;
-    }
-
-    // 先尝试相邻列（同行连续空位）
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c <= cols_ - need; ++c) {
-            bool canPlace = true;
-            for (int dc = 0; dc < need; ++dc) {
-                if (!seats_[static_cast<std::size_t>(r)][static_cast<std::size_t>(c + dc)].isEmpty()) {
-                    canPlace = false;
-                    break;
-                }
-            }
-            if (canPlace) {
-                for (int dc = 0; dc < need; ++dc) {
-                    auto& seat = seats_[static_cast<std::size_t>(r)][static_cast<std::size_t>(c + dc)];
-                    seat.student = group[static_cast<std::size_t>(dc)];
-                    seat.cleaningLeft = 0;
-                    ++occupiedSeats_;
-                    group[static_cast<std::size_t>(dc)]->startDining(now, r, c + dc);
-                }
-                return need;
-            }
-        }
-    }
-
-    // 降级：个人就座，使用评分算法
-    int seated = 0;
-    // 先计算已就座组员的质心（如果有的话）
-    int grSum = 0, gcSum = 0, gCount = 0;
-    for (const auto& s : group) {
-        if (s->getState() == StudentState::Dining) {
-            grSum += s->getSeatRow();
-            gcSum += s->getSeatCol();
-            ++gCount;
-        }
-    }
-    const int centroidR = gCount > 0 ? grSum / gCount : -1;
-    const int centroidC = gCount > 0 ? gcSum / gCount : -1;
-    const int gid = group[0]->getGroupId();
-
-    for (const auto& student : group) {
-        if (student->getState() == StudentState::Dining) continue;
-        auto [row, col] = findBestSeat(windowVirtualCol, centroidR, centroidC, gid);
-        if (row < 0) break;
-        auto& seat = seats_[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)];
-        seat.student = student;
-        seat.cleaningLeft = 0;
-        ++occupiedSeats_;
-        student->startDining(now, row, col);
-        ++seated;
-    }
-    return seated;
-}
-
-std::vector<std::shared_ptr<Student>> Canteen::tick(int now) {
-    std::vector<std::shared_ptr<Student>> finished;
-
-    // 推进清洁计时
-    for (auto& row : seats_) {
-        for (auto& seat : row) {
-            if (seat.cleaningLeft > 0) --seat.cleaningLeft;
-        }
-    }
-
-    // 推进就餐
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c < cols_; ++c) {
-            auto& seat = seats_[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
-            if (!seat.student) continue;
-            if (seat.student->advanceDiningOneSecond()) {
-                seat.student->finishDiningAndLeave(now + 1);
-                finished.push_back(seat.student);
-                seat.student.reset();
-                --occupiedSeats_;
-                if (cleaningTime_ > 0) {
-                    seat.cleaningLeft = cleaningTime_;
-                }
-            }
-        }
-    }
-    return finished;
-}
-
-std::string Canteen::renderSeatMatrix() const {
-    std::ostringstream os;
-    for (int r = 0; r < rows_; ++r) {
-        for (int c = 0; c < cols_; ++c) {
-            const auto& seat = seats_[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
-            if (seat.student) {
-                os << 'X';
-            } else if (seat.cleaningLeft > 0) {
-                os << '~';
-            } else {
-                os << '.';
-            }
-        }
-        if (r + 1 < rows_) os << '\n';
-    }
-    return os.str();
+    return "unknown";
 }
 
 } // namespace bdss::core

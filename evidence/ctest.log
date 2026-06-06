@@ -1,8 +1,0 @@
-Internal ctest changing into directory: /mnt/data/BDSS-Optimized/build
-Test project /mnt/data/BDSS-Optimized/build
-    Start 1: BDSS_CoreTest
-1/1 Test #1: BDSS_CoreTest ....................   Passed    0.02 sec
-
-100% tests passed, 0 tests failed out of 1
-
-Total Test time (real) =   0.02 sec
