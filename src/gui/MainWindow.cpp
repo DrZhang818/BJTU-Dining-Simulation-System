@@ -4,6 +4,7 @@
 #include "gui/RenderWidget.h"
 
 #include <QApplication>
+#include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -25,6 +26,7 @@
 #include <QTimeEdit>
 #include <QVBoxLayout>
 #include <QVariant>
+#include <QPalette>
 
 #include <algorithm>
 #include <array>
@@ -86,30 +88,105 @@ QTimeEdit* timeEdit(int seconds) {
     return t;
 }
 
+QPushButton* makeStepButton(const QString& text, QWidget* parent = nullptr) {
+    auto* button = new QPushButton(text, parent);
+    button->setObjectName(QStringLiteral("stepperButton"));
+    button->setFixedSize(28, 30);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setAutoRepeat(true);
+    button->setAutoRepeatDelay(280);
+    button->setAutoRepeatInterval(70);
+    return button;
+}
+
+QWidget* withStepper(QAbstractSpinBox* editor) {
+    auto* box = new QWidget;
+    box->setObjectName(QStringLiteral("stepperBox"));
+    auto* layout = new QHBoxLayout(box);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+
+    editor->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    editor->setMinimumHeight(30);
+    editor->setMinimumWidth(108);
+
+    auto* minus = makeStepButton(QStringLiteral("−"), box);
+    auto* plus = makeStepButton(QStringLiteral("+"), box);
+    QObject::connect(minus, &QPushButton::clicked, editor, &QAbstractSpinBox::stepDown);
+    QObject::connect(plus, &QPushButton::clicked, editor, &QAbstractSpinBox::stepUp);
+
+    layout->addWidget(editor, 1);
+    layout->addWidget(minus);
+    layout->addWidget(plus);
+    return box;
+}
+
+void styleForm(QFormLayout* form) {
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    form->setFormAlignment(Qt::AlignTop);
+    form->setHorizontalSpacing(18);
+    form->setVerticalSpacing(10);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+}
+
+void applyLightPalette() {
+    QApplication::setStyle(QStringLiteral("Fusion"));
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(QStringLiteral("#F8FAFC")));
+    palette.setColor(QPalette::WindowText, QColor(QStringLiteral("#0F172A")));
+    palette.setColor(QPalette::Base, QColor(QStringLiteral("#FFFFFF")));
+    palette.setColor(QPalette::AlternateBase, QColor(QStringLiteral("#F1F5F9")));
+    palette.setColor(QPalette::Text, QColor(QStringLiteral("#0F172A")));
+    palette.setColor(QPalette::Button, QColor(QStringLiteral("#FFFFFF")));
+    palette.setColor(QPalette::ButtonText, QColor(QStringLiteral("#0F172A")));
+    palette.setColor(QPalette::BrightText, QColor(QStringLiteral("#FFFFFF")));
+    palette.setColor(QPalette::Highlight, QColor(QStringLiteral("#2563EB")));
+    palette.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#FFFFFF")));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor(QStringLiteral("#64748B")));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(QStringLiteral("#64748B")));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(QStringLiteral("#64748B")));
+    qApp->setPalette(palette);
+}
+
 void styleGroup(QGroupBox* group) {
     group->setStyleSheet(QStringLiteral(
-        "QGroupBox{font-weight:700;border:1px solid #E2E8F0;border-radius:14px;margin-top:14px;padding:12px;background:#FFFFFF;}"
-        "QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;color:#0F172A;}"));
+        "QGroupBox{font-weight:700;border:1px solid #E2E8F0;border-radius:16px;margin-top:16px;padding:16px;background:#FFFFFF;color:#0F172A;}"
+        "QGroupBox::title{subcontrol-origin:margin;left:14px;padding:0 8px;color:#0F172A;background:#FFFFFF;}"));
 }
 
 } // namespace
 
 MainWindow::MainWindow(std::filesystem::path defaultConfigPath, QWidget* parent)
     : QMainWindow(parent), defaultConfigPath_(std::move(defaultConfigPath)), timer_(new QTimer(this)) {
+    applyLightPalette();
     setWindowTitle(QStringLiteral("BDSS · 北京交通大学就餐仿真系统 v3.0"));
     resize(1360, 860);
     setMinimumSize(1100, 720);
     setStyleSheet(QStringLiteral(
         "QMainWindow{background:#F8FAFC;}"
+        "QWidget{color:#0F172A;font-size:14px;background:transparent;}"
+        "QLabel{color:#0F172A;background:transparent;}"
+        "QCheckBox{color:#0F172A;background:transparent;spacing:8px;}"
+        "QCheckBox::indicator{width:16px;height:16px;}"
+        "QFrame#controlBar,QFrame#metricsBar{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;}"
         "QPushButton{border:1px solid #CBD5E1;border-radius:10px;padding:7px 12px;background:#FFFFFF;color:#0F172A;}"
         "QPushButton:hover{background:#F1F5F9;}"
+        "QPushButton:pressed{background:#E2E8F0;}"
         "QPushButton:disabled{color:#94A3B8;background:#F8FAFC;}"
         "QPushButton#primary{background:#2563EB;color:white;border-color:#2563EB;font-weight:700;}"
+        "QPushButton#primary:hover{background:#1D4ED8;}"
         "QPushButton#danger{background:#FEF2F2;color:#B91C1C;border-color:#FECACA;}"
-        "QTabWidget::pane{border:0;}"
-        "QTabBar::tab{border:1px solid #E2E8F0;border-radius:9px;padding:7px 14px;margin:3px;background:#FFFFFF;}"
+        "QPushButton#stepperButton{min-width:28px;max-width:28px;min-height:30px;max-height:30px;padding:0;border:1px solid #CBD5E1;border-radius:8px;background:#F8FAFC;color:#0F172A;font-size:15px;font-weight:800;}"
+        "QPushButton#stepperButton:hover{background:#DBEAFE;border-color:#93C5FD;}"
+        "QPushButton#stepperButton:pressed{background:#BFDBFE;}"
+        "QTabWidget::pane{border:0;background:#F8FAFC;}"
+        "QTabBar::tab{border:1px solid #E2E8F0;border-radius:9px;padding:7px 14px;margin:3px;background:#FFFFFF;color:#64748B;}"
         "QTabBar::tab:selected{background:#2563EB;color:white;border-color:#2563EB;}"
-        "QSpinBox,QDoubleSpinBox,QComboBox,QTimeEdit{border:1px solid #CBD5E1;border-radius:8px;padding:4px;background:#FFFFFF;}"));
+        "QScrollArea#configScroll,QWidget#configPage,QWidget#configContent{background:#F8FAFC;}"
+        "QSpinBox,QDoubleSpinBox,QComboBox,QTimeEdit{border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;background:#FFFFFF;color:#0F172A;selection-background-color:#BFDBFE;min-height:20px;}"
+        "QSpinBox:focus,QDoubleSpinBox:focus,QComboBox:focus,QTimeEdit:focus{border-color:#2563EB;}"
+        "QSpinBox:disabled,QDoubleSpinBox:disabled,QComboBox:disabled,QTimeEdit:disabled{color:#64748B;background:#F8FAFC;}"
+        "QComboBox::drop-down{border:0;width:24px;}"));
 
     auto* central = new QWidget(this);
     auto* root = new QVBoxLayout(central);
@@ -130,14 +207,14 @@ MainWindow::MainWindow(std::filesystem::path defaultConfigPath, QWidget* parent)
     onLoadDefaults();
     setRunningUi(false);
     resetMetrics();
-    statusBar()->showMessage(QStringLiteral("就绪：修改参数后点击“应用参数”，确认内核已同步后再开始仿真。"));
+    statusBar()->showMessage(QStringLiteral("就绪：可直接修改参数并点击“应用参数”；运行中修改也会同步到内核。"));
 }
 
 MainWindow::~MainWindow() = default;
 
 QWidget* MainWindow::buildControlBar() {
     auto* bar = new QFrame;
-    bar->setStyleSheet(QStringLiteral("QFrame{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;}"));
+    bar->setObjectName(QStringLiteral("controlBar"));
     auto* layout = new QHBoxLayout(bar);
     layout->setContentsMargins(12, 10, 12, 10);
     layout->setSpacing(10);
@@ -191,11 +268,16 @@ QWidget* MainWindow::buildControlBar() {
 
 QWidget* MainWindow::buildConfigTab() {
     auto* page = new QWidget;
+    page->setObjectName(QStringLiteral("configPage"));
     auto* outer = new QVBoxLayout(page);
+    outer->setContentsMargins(0, 0, 0, 0);
     auto* scroll = new QScrollArea(page);
+    scroll->setObjectName(QStringLiteral("configScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
+    scroll->viewport()->setStyleSheet(QStringLiteral("background:#F8FAFC;"));
     auto* content = new QWidget(scroll);
+    content->setObjectName(QStringLiteral("configContent"));
     auto* grid = new QGridLayout(content);
     grid->setContentsMargins(6, 6, 6, 6);
     grid->setHorizontalSpacing(14);
@@ -204,34 +286,37 @@ QWidget* MainWindow::buildConfigTab() {
     auto* scale = new QGroupBox(QStringLiteral("仿真规模"));
     styleGroup(scale);
     auto* f1 = new QFormLayout(scale);
+    styleForm(f1);
     spinWindowCount_ = spin(1, 100, 8);
     spinTableRows_ = spin(1, 80, 10);
     spinTableCols_ = spin(1, 80, 10);
     spinTotalSimTime_ = spin(1, 24 * 3600, 6600, QStringLiteral(" 秒"));
     spinRandomSeed_ = spin(0, 100000000, 42);
-    f1->addRow(QStringLiteral("餐口数量"), spinWindowCount_);
-    f1->addRow(QStringLiteral("餐桌行数"), spinTableRows_);
-    f1->addRow(QStringLiteral("餐桌列数"), spinTableCols_);
-    f1->addRow(QStringLiteral("仿真总时长"), spinTotalSimTime_);
-    f1->addRow(QStringLiteral("随机种子"), spinRandomSeed_);
+    f1->addRow(QStringLiteral("餐口数量"), withStepper(spinWindowCount_));
+    f1->addRow(QStringLiteral("餐桌行数"), withStepper(spinTableRows_));
+    f1->addRow(QStringLiteral("餐桌列数"), withStepper(spinTableCols_));
+    f1->addRow(QStringLiteral("仿真总时长"), withStepper(spinTotalSimTime_));
+    f1->addRow(QStringLiteral("随机种子"), withStepper(spinRandomSeed_));
 
     auto* flow = new QGroupBox(QStringLiteral("人流与服务"));
     styleGroup(flow);
     auto* f2 = new QFormLayout(flow);
+    styleForm(f2);
     spinArrivalRate_ = dspin(0.0, 1000.0, 6.0, 2, QStringLiteral(" 人/分钟"));
     spinAvgServiceTime_ = spin(1, 3600, 25, QStringLiteral(" 秒"));
     spinServiceStddev_ = dspin(0.0, 1800.0, 8.0, 1, QStringLiteral(" 秒"));
     spinAvgDiningTime_ = spin(1, 7200, 900, QStringLiteral(" 秒"));
     spinDiningStddev_ = dspin(0.0, 3600.0, 240.0, 1, QStringLiteral(" 秒"));
-    f2->addRow(QStringLiteral("平均到达率"), spinArrivalRate_);
-    f2->addRow(QStringLiteral("平均打饭耗时"), spinAvgServiceTime_);
-    f2->addRow(QStringLiteral("打饭耗时标准差"), spinServiceStddev_);
-    f2->addRow(QStringLiteral("平均就餐时长"), spinAvgDiningTime_);
-    f2->addRow(QStringLiteral("就餐时长标准差"), spinDiningStddev_);
+    f2->addRow(QStringLiteral("平均到达率"), withStepper(spinArrivalRate_));
+    f2->addRow(QStringLiteral("平均打饭耗时"), withStepper(spinAvgServiceTime_));
+    f2->addRow(QStringLiteral("打饭耗时标准差"), withStepper(spinServiceStddev_));
+    f2->addRow(QStringLiteral("平均就餐时长"), withStepper(spinAvgDiningTime_));
+    f2->addRow(QStringLiteral("就餐时长标准差"), withStepper(spinDiningStddev_));
 
     auto* rush = new QGroupBox(QStringLiteral("高峰与窗口选择"));
     styleGroup(rush);
     auto* f3 = new QFormLayout(rush);
+    styleForm(f3);
     comboArrivalPattern_ = new QComboBox;
     comboArrivalPattern_->addItem(QStringLiteral("稳定到达"), static_cast<int>(bdss::core::ArrivalPattern::Steady));
     comboArrivalPattern_->addItem(QStringLiteral("多段高峰"), static_cast<int>(bdss::core::ArrivalPattern::RushPeaks));
@@ -250,19 +335,20 @@ QWidget* MainWindow::buildConfigTab() {
     spinEfficiencyWeight_ = dspin(0.0, 20.0, 1.0, 2);
     f3->addRow(QStringLiteral("到达模式"), comboArrivalPattern_);
     f3->addRow(QStringLiteral("窗口效率"), comboWindowEfficiency_);
-    f3->addRow(QStringLiteral("第一段开始"), timeRush1Start_);
-    f3->addRow(QStringLiteral("第一段结束"), timeRush1End_);
-    f3->addRow(QStringLiteral("第一段倍率"), spinRush1Multiplier_);
-    f3->addRow(QStringLiteral("第二段开始"), timeRush2Start_);
-    f3->addRow(QStringLiteral("第二段结束"), timeRush2End_);
-    f3->addRow(QStringLiteral("第二段倍率"), spinRush2Multiplier_);
-    f3->addRow(QStringLiteral("队列权重"), spinQueueWeight_);
-    f3->addRow(QStringLiteral("偏好加分"), spinPreferenceBonus_);
-    f3->addRow(QStringLiteral("效率权重"), spinEfficiencyWeight_);
+    f3->addRow(QStringLiteral("第一段开始"), withStepper(timeRush1Start_));
+    f3->addRow(QStringLiteral("第一段结束"), withStepper(timeRush1End_));
+    f3->addRow(QStringLiteral("第一段倍率"), withStepper(spinRush1Multiplier_));
+    f3->addRow(QStringLiteral("第二段开始"), withStepper(timeRush2Start_));
+    f3->addRow(QStringLiteral("第二段结束"), withStepper(timeRush2End_));
+    f3->addRow(QStringLiteral("第二段倍率"), withStepper(spinRush2Multiplier_));
+    f3->addRow(QStringLiteral("队列权重"), withStepper(spinQueueWeight_));
+    f3->addRow(QStringLiteral("偏好加分"), withStepper(spinPreferenceBonus_));
+    f3->addRow(QStringLiteral("效率权重"), withStepper(spinEfficiencyWeight_));
 
     auto* behavior = new QGroupBox(QStringLiteral("行为模型"));
     styleGroup(behavior);
     auto* f4 = new QFormLayout(behavior);
+    styleForm(f4);
     checkPreferences_ = new QCheckBox(QStringLiteral("启用餐口偏好"));
     checkPatience_ = new QCheckBox(QStringLiteral("启用耐心/离队"));
     spinAvgPatience_ = dspin(1.0, 7200.0, 420.0, 1, QStringLiteral(" 秒"));
@@ -282,21 +368,21 @@ QWidget* MainWindow::buildConfigTab() {
     spinStrangerPenalty_ = dspin(0.0, 20.0, 0.5, 2);
     f4->addRow(checkPreferences_);
     f4->addRow(checkPatience_);
-    f4->addRow(QStringLiteral("平均耐心"), spinAvgPatience_);
-    f4->addRow(QStringLiteral("耐心标准差"), spinPatienceStddev_);
-    f4->addRow(QStringLiteral("换队概率"), spinQueueSwitchProbability_);
+    f4->addRow(QStringLiteral("平均耐心"), withStepper(spinAvgPatience_));
+    f4->addRow(QStringLiteral("耐心标准差"), withStepper(spinPatienceStddev_));
+    f4->addRow(QStringLiteral("换队概率"), withStepper(spinQueueSwitchProbability_));
     f4->addRow(checkTakeaway_);
-    f4->addRow(QStringLiteral("外带比例"), spinTakeawayRate_);
-    f4->addRow(QStringLiteral("打包耗时倍率"), spinPackingFactor_);
+    f4->addRow(QStringLiteral("外带比例"), withStepper(spinTakeawayRate_));
+    f4->addRow(QStringLiteral("打包耗时倍率"), withStepper(spinPackingFactor_));
     f4->addRow(checkCleaning_);
-    f4->addRow(QStringLiteral("清洁耗时"), spinCleaningTime_);
+    f4->addRow(QStringLiteral("清洁耗时"), withStepper(spinCleaningTime_));
     f4->addRow(checkGroupDining_);
-    f4->addRow(QStringLiteral("结伴概率"), spinGroupProbability_);
-    f4->addRow(QStringLiteral("最大同行人数"), spinMaxGroupSize_);
+    f4->addRow(QStringLiteral("结伴概率"), withStepper(spinGroupProbability_));
+    f4->addRow(QStringLiteral("最大同行人数"), withStepper(spinMaxGroupSize_));
     f4->addRow(checkSeatPreference_);
-    f4->addRow(QStringLiteral("靠近窗口权重"), spinNearWindowWeight_);
-    f4->addRow(QStringLiteral("同行邻座奖励"), spinGroupAdjacencyBonus_);
-    f4->addRow(QStringLiteral("陌生人间隔惩罚"), spinStrangerPenalty_);
+    f4->addRow(QStringLiteral("靠近窗口权重"), withStepper(spinNearWindowWeight_));
+    f4->addRow(QStringLiteral("同行邻座奖励"), withStepper(spinGroupAdjacencyBonus_));
+    f4->addRow(QStringLiteral("陌生人间隔惩罚"), withStepper(spinStrangerPenalty_));
 
     auto* buttons = new QWidget;
     auto* buttonLayout = new QHBoxLayout(buttons);
@@ -310,13 +396,11 @@ QWidget* MainWindow::buildConfigTab() {
 
     grid->addWidget(scale, 0, 0);
     grid->addWidget(flow, 0, 1);
-    grid->addWidget(rush, 0, 2);
-    grid->addWidget(behavior, 0, 3);
-    grid->addWidget(buttons, 1, 0, 1, 4);
+    grid->addWidget(rush, 1, 0);
+    grid->addWidget(behavior, 1, 1);
+    grid->addWidget(buttons, 2, 0, 1, 2);
     grid->setColumnStretch(0, 1);
     grid->setColumnStretch(1, 1);
-    grid->setColumnStretch(2, 1);
-    grid->setColumnStretch(3, 1);
     scroll->setWidget(content);
     outer->addWidget(scroll);
     return page;
@@ -329,7 +413,7 @@ QWidget* MainWindow::buildLiveTab() {
     renderWidget_ = new RenderWidget(page);
     layout->addWidget(renderWidget_, 1);
     auto* metrics = new QFrame;
-    metrics->setStyleSheet(QStringLiteral("QFrame{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;}"));
+    metrics->setObjectName(QStringLiteral("metricsBar"));
     auto* grid = new QGridLayout(metrics);
     grid->setContentsMargins(10, 10, 10, 10);
     grid->setSpacing(8);
@@ -418,6 +502,7 @@ void MainWindow::onSaveConfig() {
 
 void MainWindow::onApplyConfig() {
     try {
+        const bool wasRunning = timer_->isActive();
         auto config = readConfigFromForm();
         config.normalize();
         config.validate();
@@ -433,7 +518,9 @@ void MainWindow::onApplyConfig() {
         if (renderWidget_) renderWidget_->setEngine(engine_.get());
         refreshLiveStats();
         updateDirtyStatus();
-        tabs_->setCurrentIndex(1);
+        if (!wasRunning) {
+            tabs_->setCurrentIndex(1);
+        }
         statusBar()->showMessage(QStringLiteral("参数已同步到仿真内核，新增餐口已参与排队路由。"), 3000);
     } catch (const std::exception& ex) {
         QMessageBox::warning(this, QStringLiteral("参数无效"), QString::fromLocal8Bit(ex.what()));
@@ -459,7 +546,7 @@ void MainWindow::onStartClicked() {
 void MainWindow::onPauseClicked() {
     timer_->stop();
     setRunningUi(false);
-    statusBar()->showMessage(QStringLiteral("已暂停。修改参数后点击“应用参数”可实时同步，不需要重置。"), 3000);
+    statusBar()->showMessage(QStringLiteral("已暂停。修改参数后点击“应用参数”即可同步，不需要重置。"), 3000);
 }
 
 void MainWindow::onStepClicked() {
@@ -652,13 +739,7 @@ void MainWindow::setRunningUi(bool running) {
     btnPause_->setEnabled(running);
     btnStep_->setEnabled(!running);
     btnReset_->setEnabled(true);
-    btnApply_->setEnabled(!running && configDirty_);
-
-    const std::vector<QWidget*> controls{
-        spinWindowCount_, spinTableRows_, spinTableCols_, spinTotalSimTime_, spinRandomSeed_, spinArrivalRate_, spinAvgServiceTime_, spinServiceStddev_, spinAvgDiningTime_, spinDiningStddev_, comboArrivalPattern_, comboWindowEfficiency_, timeRush1Start_, timeRush1End_, spinRush1Multiplier_, timeRush2Start_, timeRush2End_, spinRush2Multiplier_, checkPreferences_, spinQueueWeight_, spinPreferenceBonus_, spinEfficiencyWeight_, checkPatience_, spinAvgPatience_, spinPatienceStddev_, spinQueueSwitchProbability_, checkTakeaway_, spinTakeawayRate_, spinPackingFactor_, checkCleaning_, spinCleaningTime_, checkGroupDining_, spinGroupProbability_, spinMaxGroupSize_, checkSeatPreference_, spinNearWindowWeight_, spinGroupAdjacencyBonus_, spinStrangerPenalty_};
-    for (auto* control : controls) {
-        if (control) control->setEnabled(!running);
-    }
+    btnApply_->setEnabled(configDirty_);
 }
 
 void MainWindow::resetMetrics() {
@@ -677,7 +758,7 @@ void MainWindow::updateDirtyStatus() {
         labelDirty_->setText(QStringLiteral("● 内核已同步"));
         labelDirty_->setStyleSheet(QStringLiteral("color:#059669;font-weight:700;"));
     }
-    if (btnApply_) btnApply_->setEnabled(!timer_->isActive() && configDirty_);
+    if (btnApply_) btnApply_->setEnabled(configDirty_);
 }
 
 } // namespace bdss::gui
