@@ -1,0 +1,15 @@
+[  8%] Building CXX object CMakeFiles/BDSSCore.dir/src/core/Config.cpp.o
+[ 16%] Building CXX object CMakeFiles/BDSSCore.dir/src/core/Student.cpp.o
+[ 25%] Building CXX object CMakeFiles/BDSSCore.dir/src/core/Window.cpp.o
+[ 33%] Building CXX object CMakeFiles/BDSSCore.dir/src/core/Canteen.cpp.o
+[ 41%] Building CXX object CMakeFiles/BDSSCore.dir/src/core/SimulationEngine.cpp.o
+[ 50%] Building CXX object CMakeFiles/BDSSCore.dir/src/utils/RandomGenerator.cpp.o
+[ 58%] Building CXX object CMakeFiles/BDSSCore.dir/src/utils/StatisticsLogger.cpp.o
+[ 66%] Linking CXX static library libBDSSCore.a
+[ 66%] Built target BDSSCore
+[ 75%] Building CXX object CMakeFiles/BDSS.dir/main.cpp.o
+[ 83%] Linking CXX executable BDSS
+[ 83%] Built target BDSS
+[ 91%] Building CXX object CMakeFiles/BDSS_CoreTest.dir/tests/test_core.cpp.o
+[100%] Linking CXX executable BDSS_CoreTest
+[100%] Built target BDSS_CoreTest

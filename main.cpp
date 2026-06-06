@@ -66,8 +66,8 @@ CliOptions parseArgs(int argc, char** argv) {
 
         if (arg == "--help" || arg == "-h") {
             options.help = true;
-        } else if (arg == "--headless" || arg == "--no-gui" || arg == "-c") {
-            options.forceHeadless = true;
+        } else         if (arg == "--headless" || arg == "--no-gui" || arg == "-c" || arg == "--gui") {
+            options.forceHeadless = (arg != "--gui");
         } else if (arg == "--config") {
             options.configPath = requireValue(arg);
         } else if (arg == "--output") {

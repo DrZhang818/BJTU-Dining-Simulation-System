@@ -1,38 +1,45 @@
 # 北京交通大学就餐仿真系统（BDSS）
 
-BDSS 是面向《软件综合实训》的食堂高峰期离散事件仿真系统。系统模拟学生到达、窗口排队、打饭服务、等待座位、就餐和离场全过程，并输出窗口排队、座位利用率、等待时间等统计指标。
+BDSS（Beijing Jiaotong University Dining Simulation System）是面向《软件综合实训》的食堂高峰期离散事件仿真系统。系统模拟学生到达、窗口排队、打饭服务、等待座位、就餐和离场全过程，并输出窗口排队、座位利用率、等待时间等统计指标。
 
-## 本次优化重点
+## 特性
 
-本版本在原有核心闭环基础上做了工程化整理和可靠性增强：
-
-1. 将核心仿真逻辑拆分为 `BDSSCore` 静态库，主程序和测试程序复用同一套核心代码。
-2. 增加配置参数校验，避免窗口数、座位数、时长、到达率等非法输入导致异常结果。
-3. 明确 `arrivalRate` 为“每分钟平均到达人数”，仿真时自动换算为每秒泊松到达强度，更符合 1 小时高峰场景。
-4. 增强命令行入口，支持 `--config`、`--output`、`--seed`、`--duration`、`--headless` 等参数。
-5. 保留 Qt GUI 可选构建能力；无 Qt 环境时自动构建 headless 版本，降低提交和验收风险。
-6. 增加 `ctest` 集成和更完整的断言测试，覆盖配置、学生生命周期、窗口、座位、随机数、统计日志和完整仿真流程。
-7. CSV 输出保留课程报告需要的核心字段：`time,total_queue_length,waiting_for_seat_count,occupied_seats,finished_students,seat_utilization`。
-8. 使用固定随机种子保证测试和报告数据可复现。
+- **离散事件仿真引擎** — 学生从到达 → 排队 → 服务 → 等座 → 就餐 → 离开的全生命周期
+- **多峰人流模型** — 支持配置多个就餐高峰时段及强度
+- **就餐者画像** — 本科生/研究生/教职工三类人群，不同就餐时长
+- **窗口偏好** — 学生按窗口类别偏好选择排队队列
+- **耐心模型** — 排队过久可离场或切换队列
+- **打包外带** — 支持打包比例配置，打包学生不占用座位
+- **座位清洁** — 学生离开后座位进入清洁状态
+- **结伴用餐** — 支持生成小组，分配邻座
+- **座位偏好** — 就近窗口、结伴邻座、陌生人间隔等加权评分
+- **Qt6 图形界面** — 实时渲染、配置编辑、统计图表、CSV 导出
+- **命令行模式** — 无 GUI 环境亦可运行并输出 CSV
+- **严格兼容模式** — 关闭偏好功能后可用旧种子复现结果
 
 ## 目录结构
 
 ```text
-BDSS-Optimized/
-├── CMakeLists.txt
-├── main.cpp
+.
+├── CMakeLists.txt                 # 构建配置
+├── main.cpp                       # 程序入口
 ├── include/
-│   ├── core/
-│   ├── gui/
-│   └── utils/
+│   ├── core/                      # 核心仿真：Config, Student, Window, Canteen, SimulationEngine
+│   ├── gui/                       # GUI：MainWindow, RenderWidget
+│   └── utils/                     # 工具：RandomGenerator, StatisticsLogger
 ├── src/
-│   ├── core/
-│   ├── gui/
-│   └── utils/
-├── resources/default_config.json
-├── tests/test_core.cpp
-├── docs/OPTIMIZATION_SUMMARY.md
-└── evidence/
+│   ├── core/                      # 核心仿真实现
+│   ├── gui/                       # GUI 实现
+│   └── utils/                     # 工具实现
+├── resources/
+│   └── default_config.json        # 默认仿真配置
+├── tests/
+│   └── test_core.cpp              # 核心模块单元测试
+└── docs/
+    ├── DEVELOPMENT_LOG.md         # 开发日志
+    ├── OPTIMIZATION_SUMMARY.md    # 优化总结
+    ├── RUN_GUIDE.md               # 快速运行指南
+    └── evidence/                  # 验证截图与日志
 ```
 
 ## 编译
@@ -62,25 +69,17 @@ cmake --build build
 ./build/BDSS --headless --seed 2026 --duration 1800 --output result.csv
 ```
 
+启动图形界面：
+
+```bash
+./build/BDSS --gui
+```
+
 ## 测试
 
 ```bash
 ./build/BDSS_CoreTest
 ctest --test-dir build --output-on-failure
-```
-
-测试通过时会看到类似输出：
-
-```text
-[PASS] Student state and time calculation
-[PASS] Window queue and service
-[PASS] Canteen seat allocation and release
-[PASS] Config parse and validation
-[PASS] RandomGenerator range test
-[PASS] SimulationEngine full-process test
-[PASS] StatisticsLogger CSV export
-
-All core tests passed.
 ```
 
 ## CSV 字段
@@ -99,4 +98,3 @@ All core tests passed.
 - CMake 3.20+
 - 支持 C++23 的编译器，例如 GCC 13+、Clang 16+、MSVC 2022
 - Qt 6 Widgets 可选，仅用于 GUI
-

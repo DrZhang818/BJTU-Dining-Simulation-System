@@ -2,21 +2,24 @@
 
 #include <QWidget>
 
+namespace bdss::core {
+class SimulationEngine;
+} // namespace bdss::core
+
 namespace bdss::gui {
 
 class RenderWidget final : public QWidget {
     Q_OBJECT
 public:
     explicit RenderWidget(QWidget* parent = nullptr);
-    void setSeatMatrix(int rows, int cols, int occupiedSeats);
+
+    void setEngine(const bdss::core::SimulationEngine* engine);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
-    int rows_ = 10;
-    int cols_ = 10;
-    int occupiedSeats_ = 0;
+    const bdss::core::SimulationEngine* engine_ = nullptr;
 };
 
 } // namespace bdss::gui

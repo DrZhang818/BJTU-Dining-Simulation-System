@@ -12,6 +12,7 @@ public:
     static int getNormalInt(double mean, double stddev, int minimum = 1);
     static int getUniformInt(int minInclusive, int maxInclusive);
     static double getUniformDouble(double minInclusive, double maxInclusive);
+    static int getWeightedChoice(const std::vector<double>& weights);
 
 private:
     static std::mt19937& engine();

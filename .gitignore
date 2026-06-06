@@ -9,3 +9,6 @@ CMakeCache.txt
 .DS_Store
 simulation_log.csv
 statistics_test.csv
+regression_check.csv
+.cache/
+.cursor/

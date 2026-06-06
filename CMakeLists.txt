@@ -9,6 +9,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Qt AUTOMOC 在全局级别设置（仅在有 Qt 编译时实际使用）
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
 set(BDSS_CORE_SOURCES
     src/core/Config.cpp
     src/core/Student.cpp
@@ -37,13 +42,15 @@ target_link_libraries(BDSS PRIVATE BDSSCore)
 target_compile_definitions(BDSS PRIVATE BDSS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(BDSS_GUI_ENABLED OFF)
+
+# ----- 自动检测 Qt6 -----
+# 如果你安装了 Qt6 但 CMake 找不到，可以在这里指定路径：
+# list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/qt@6/lib/cmake")
+
 if(BDSS_BUILD_GUI)
-    find_package(Qt6 QUIET COMPONENTS Widgets)
+    find_package(Qt6 QUIET COMPONENTS Widgets Charts)
     if(Qt6_FOUND AND TARGET Qt6::Widgets)
         set(BDSS_GUI_ENABLED ON)
-        set(CMAKE_AUTOMOC ON)
-        set(CMAKE_AUTOUIC ON)
-        set(CMAKE_AUTORCC ON)
         target_sources(BDSS PRIVATE
             include/gui/MainWindow.h
             include/gui/RenderWidget.h
@@ -51,6 +58,13 @@ if(BDSS_BUILD_GUI)
             src/gui/RenderWidget.cpp
         )
         target_link_libraries(BDSS PRIVATE Qt6::Widgets)
+        if(TARGET Qt6::Charts)
+            target_link_libraries(BDSS PRIVATE Qt6::Charts)
+            target_compile_definitions(BDSS PRIVATE BDSS_HAS_CHARTS)
+            message(STATUS "Qt6 Charts found: charts tab enabled.")
+        else()
+            message(STATUS "Qt6 Charts not found: charts tab will show placeholder.")
+        endif()
         target_compile_definitions(BDSS PRIVATE BDSS_HAS_GUI)
         message(STATUS "Qt6 Widgets found: GUI build enabled.")
     else()

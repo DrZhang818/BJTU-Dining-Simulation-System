@@ -27,6 +27,7 @@ void StatisticsLogger::record(int time,
                                   occupiedSeats,
                                   finishedStudents,
                                   seatUtilization});
+    summary_.finishedStudents = std::max(summary_.finishedStudents, finishedStudents);
     summary_.maxQueueLength = std::max(summary_.maxQueueLength, totalQueueLength);
     summary_.maxWaitingForSeatCount = std::max(summary_.maxWaitingForSeatCount, waitingForSeatCount);
 }

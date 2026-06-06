@@ -39,21 +39,6 @@ Student::Student(int id, int arrivalTime, int serviceTime, int diningTime)
     }
 }
 
-int Student::getId() const noexcept { return id_; }
-StudentState Student::getState() const noexcept { return state_; }
-int Student::getArrivalTime() const noexcept { return arrivalTime_; }
-int Student::getQueueStartTime() const noexcept { return queueStartTime_; }
-int Student::getServiceStartTime() const noexcept { return serviceStartTime_; }
-int Student::getServiceEndTime() const noexcept { return serviceEndTime_; }
-int Student::getDiningStartTime() const noexcept { return diningStartTime_; }
-int Student::getLeaveTime() const noexcept { return leaveTime_; }
-int Student::getServiceTime() const noexcept { return serviceTime_; }
-int Student::getDiningTime() const noexcept { return diningTime_; }
-int Student::getRemainingServiceTime() const noexcept { return remainingServiceTime_; }
-int Student::getRemainingDiningTime() const noexcept { return remainingDiningTime_; }
-int Student::getSeatRow() const noexcept { return seatRow_; }
-int Student::getSeatCol() const noexcept { return seatCol_; }
-
 void Student::setServiceTime(int seconds) {
     if (state_ != StudentState::Arrived) {
         throw std::logic_error("service time can only be adjusted before queuing");

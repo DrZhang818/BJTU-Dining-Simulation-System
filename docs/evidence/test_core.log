@@ -1,0 +1,20 @@
+[PASS] Student state and time calculation
+[PASS] Window queue and service
+[PASS] Canteen seat allocation and release
+[PASS] Config parse and validation
+[PASS] RandomGenerator range test
+========== BDSS Simulation Summary ==========
+Finished students: 16
+Max queue length: 0
+Max waiting-for-seat count: 0
+Average queue wait time: 0.0000 seconds
+Average seat wait time: 0.0000 seconds
+Average service time: 9.5625 seconds
+Average total time in canteen: 39.1875 seconds
+Average seat utilization: 14.7205%
+============================================
+[PASS] SimulationEngine full-process test
+[INFO] CSV exported to simulation_log.csv
+[PASS] StatisticsLogger CSV export
+
+All core tests passed.

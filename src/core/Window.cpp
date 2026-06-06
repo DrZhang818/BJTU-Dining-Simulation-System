@@ -13,37 +13,22 @@ Window::Window(int id, double efficiency)
     }
 }
 
-int Window::getId() const noexcept { return id_; }
-double Window::getEfficiency() const noexcept { return efficiency_; }
-
-std::size_t Window::getQueueLength() const noexcept {
-    return queue_.size();
-}
-
-std::size_t Window::getWorkloadLength() const noexcept {
-    return queue_.size() + (current_ ? 1U : 0U);
-}
-
-bool Window::empty() const noexcept {
-    return queue_.empty() && !current_;
-}
-
-bool Window::isServing() const noexcept {
-    return static_cast<bool>(current_);
-}
-
 void Window::enqueue(const std::shared_ptr<Student>& student, int now) {
     if (!student) {
         throw std::invalid_argument("cannot enqueue null student");
     }
     student->startQueuing(now);
-    queue_.push(student);
+    queue_.push_back(student);
+}
+
+void Window::reEnqueue(const std::shared_ptr<Student>& student) {
+    queue_.push_back(student);
 }
 
 std::shared_ptr<Student> Window::tick(int now) {
     if (!current_ && !queue_.empty()) {
         current_ = queue_.front();
-        queue_.pop();
+        queue_.pop_front();
         current_->startServing(now);
     }
 
@@ -58,6 +43,22 @@ std::shared_ptr<Student> Window::tick(int now) {
         return completed;
     }
     return nullptr;
+}
+
+std::vector<std::shared_ptr<Student>> Window::collectImpatient() {
+    std::vector<std::shared_ptr<Student>> impatient;
+    auto it = queue_.begin();
+    while (it != queue_.end()) {
+        auto& student = *it;
+        student->tickPatience();
+        if (student->isImpatient()) {
+            impatient.push_back(student);
+            it = queue_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return impatient;
 }
 
 } // namespace bdss::core

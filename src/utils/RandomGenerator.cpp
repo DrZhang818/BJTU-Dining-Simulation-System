@@ -47,4 +47,30 @@ double RandomGenerator::getUniformDouble(double minInclusive, double maxInclusiv
     return dist(engine());
 }
 
+int RandomGenerator::getWeightedChoice(const std::vector<double>& weights) {
+    if (weights.empty()) {
+        throw std::invalid_argument("weights must not be empty");
+    }
+    double sum = 0.0;
+    for (const auto w : weights) {
+        if (w < 0.0) {
+            throw std::invalid_argument("weights must be non-negative");
+        }
+        sum += w;
+    }
+    if (sum <= 0.0) {
+        throw std::invalid_argument("sum of weights must be positive");
+    }
+    std::uniform_real_distribution<double> dist(0.0, sum);
+    const double sample = dist(engine());
+    double cumulative = 0.0;
+    for (int i = 0; i < static_cast<int>(weights.size()); ++i) {
+        cumulative += weights[i];
+        if (sample < cumulative) {
+            return i;
+        }
+    }
+    return static_cast<int>(weights.size()) - 1;
+}
+
 } // namespace bdss::utils
