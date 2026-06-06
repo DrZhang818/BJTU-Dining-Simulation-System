@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPen>
+#include <QWheelEvent>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -18,7 +19,53 @@ RenderWidget::RenderWidget(QWidget* parent) : QWidget(parent) {
 
 void RenderWidget::setEngine(const bdss::core::SimulationEngine* engine) {
     engine_ = engine;
+    windowScrollOffset_ = 0;
     update();
+}
+
+void RenderWidget::wheelEvent(QWheelEvent* event) {
+    if (!engine_) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+
+    const auto windows = engine_->getWindowSnapshots();
+    if (windows.empty()) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+
+    const QRect content = rect().adjusted(12, 12, -12, -12);
+    const int leftWidth = std::max(300, width() / 3);
+    const QRect windowsRect(content.left() + 18, content.top() + 18, leftWidth - 30, content.height() - 58);
+    const int cardGap = 8;
+    const int cardHeight = 54;
+    const int footerHeight = static_cast<int>(windows.size()) > 1 ? 24 : 0;
+    const int maxVisible = std::max(1, (windowsRect.height() - 34 - footerHeight) / (cardHeight + cardGap));
+    const int maxOffset = std::max(0, static_cast<int>(windows.size()) - maxVisible);
+    if (maxOffset == 0) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+
+    int steps = 0;
+    if (!event->angleDelta().isNull()) {
+        steps = event->angleDelta().y() / 120;
+        if (steps == 0) {
+            steps = event->angleDelta().y() > 0 ? 1 : -1;
+        }
+    } else if (!event->pixelDelta().isNull()) {
+        steps = event->pixelDelta().y() > 0 ? 1 : -1;
+    }
+
+    if (steps == 0) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+
+    windowScrollOffset_ = std::clamp(windowScrollOffset_ - steps, 0, maxOffset);
+    update();
+    event->accept();
 }
 
 void RenderWidget::paintEvent(QPaintEvent*) {
@@ -63,13 +110,17 @@ void RenderWidget::drawWindows(QPainter& painter, const QRect& rect) {
     }
     const int cardGap = 8;
     const int cardHeight = 54;
+    const bool overflow = static_cast<int>(windows.size()) > std::max(1, (rect.height() - 34) / (cardHeight + cardGap));
+    const int footerHeight = overflow ? 24 : 0;
     int y = rect.top() + 34;
-    const int maxVisible = std::max(1, (rect.height() - 34) / (cardHeight + cardGap));
-    const int count = std::min(static_cast<int>(windows.size()), maxVisible);
+    const int maxVisible = std::max(1, (rect.height() - 34 - footerHeight) / (cardHeight + cardGap));
+    const int maxOffset = std::max(0, static_cast<int>(windows.size()) - maxVisible);
+    windowScrollOffset_ = std::clamp(windowScrollOffset_, 0, maxOffset);
+    const int count = std::min(static_cast<int>(windows.size()) - windowScrollOffset_, maxVisible);
     const int maxQueue = std::max(1, engine_->getTotalQueueLength());
 
     for (int i = 0; i < count; ++i) {
-        const auto& w = windows[static_cast<std::size_t>(i)];
+        const auto& w = windows[static_cast<std::size_t>(windowScrollOffset_ + i)];
         QRect card(rect.left(), y, rect.width(), cardHeight);
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor("#F1F5F9"));
@@ -95,10 +146,23 @@ void RenderWidget::drawWindows(QPainter& painter, const QRect& rect) {
         y += cardHeight + cardGap;
     }
 
-    if (static_cast<int>(windows.size()) > count) {
+    if (overflow) {
         painter.setPen(QColor("#64748B"));
+        painter.setFont(QFont(QStringLiteral("Sans Serif"), 9));
         painter.drawText(QRect(rect.left(), y, rect.width(), 20), Qt::AlignCenter,
-                         QStringLiteral("还有 %1 个餐口，增大窗口可查看更多").arg(static_cast<int>(windows.size()) - count));
+                         QStringLiteral("使用滚轮来上下移动查看其他窗口"));
+
+        const int trackHeight = std::max(18, count * cardHeight + std::max(0, count - 1) * cardGap);
+        const QRect track(rect.right() - 4, rect.top() + 34, 4, trackHeight);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor("#E2E8F0"));
+        painter.drawRoundedRect(track, 2, 2);
+        const double visibleRatio = std::clamp(static_cast<double>(count) / static_cast<double>(windows.size()), 0.08, 1.0);
+        const int thumbHeight = std::max(18, static_cast<int>(track.height() * visibleRatio));
+        const int maxThumbTravel = std::max(0, track.height() - thumbHeight);
+        const int thumbY = track.top() + (maxOffset > 0 ? static_cast<int>(static_cast<double>(windowScrollOffset_) / maxOffset * maxThumbTravel) : 0);
+        painter.setBrush(QColor("#94A3B8"));
+        painter.drawRoundedRect(QRect(track.left(), thumbY, track.width(), thumbHeight), 2, 2);
     }
 }
 

@@ -417,7 +417,7 @@ QWidget* MainWindow::buildLiveTab() {
     auto* grid = new QGridLayout(metrics);
     grid->setContentsMargins(10, 10, 10, 10);
     grid->setSpacing(8);
-    grid->addWidget(makeMetricCard(QStringLiteral("仿真时间"), statTime_), 0, 0);
+    grid->addWidget(makeMetricCard(QStringLiteral("已运行 / 总时长"), statTime_), 0, 0);
     grid->addWidget(makeMetricCard(QStringLiteral("已生成"), statGenerated_), 0, 1);
     grid->addWidget(makeMetricCard(QStringLiteral("窗口排队"), statQueue_), 0, 2);
     grid->addWidget(makeMetricCard(QStringLiteral("等座人数"), statWaitSeat_), 0, 3);

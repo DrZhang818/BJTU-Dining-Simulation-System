@@ -4,6 +4,8 @@
 
 #include <QWidget>
 
+class QWheelEvent;
+
 class QPainter;
 
 namespace bdss::gui {
@@ -15,6 +17,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     void drawEmptyState(QPainter& painter, const QRect& rect);
@@ -23,6 +26,7 @@ private:
     void drawLegend(QPainter& painter, const QRect& rect);
 
     const bdss::core::SimulationEngine* engine_ = nullptr;
+    int windowScrollOffset_ = 0;
 };
 
 } // namespace bdss::gui
