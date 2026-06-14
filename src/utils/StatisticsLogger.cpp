@@ -11,139 +11,134 @@ namespace bdss::utils {
 namespace {
 
 std::string joinInts(const std::vector<int>& values) {
-    std::ostringstream oss;
+    std::ostringstream out;
     for (std::size_t i = 0; i < values.size(); ++i) {
         if (i > 0) {
-            oss << ';';
+            out << ';';
         }
-        oss << values[i];
+        out << values[i];
     }
-    return oss.str();
+    return out.str();
 }
 
-double safeAverage(long long total, int count) {
-    return count <= 0 ? 0.0 : static_cast<double>(total) / static_cast<double>(count);
+std::string percent(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << value * 100.0 << '%';
+    return out.str();
 }
 
 } // namespace
 
-void StatisticsLogger::recordGenerated(const std::shared_ptr<bdss::core::Student>& student, bool preferenceHit) {
-    ++generatedCount_;
-    if (student && student->isTakeaway()) {
-        ++takeawayCount_;
-    }
-    if (preferenceHit) {
-        ++preferenceHitCount_;
-    }
+void StatisticsLogger::reset() {
+    generatedStudents_ = 0;
+    totalQueueWait_ = 0.0;
+    queueWaitSamples_ = 0;
+    totalSeatWait_ = 0.0;
+    seatWaitSamples_ = 0;
+    records_.clear();
 }
 
-void StatisticsLogger::logStudentFinished(const std::shared_ptr<bdss::core::Student>& student) {
-    if (!student) {
-        return;
-    }
-    ++finishedCount_;
-    totalQueueWait_ += student->getQueueWaitingTime();
-    totalSeatWait_ += student->getSeatWaitingTime();
-    totalServiceTime_ += student->getServiceTime();
-    totalDiningTime_ += student->isTakeaway() ? 0 : student->getDiningTime();
-    totalSystemTime_ += student->getTotalSystemTime();
+void StatisticsLogger::setGeneratedStudents(int value) {
+    generatedStudents_ = value;
 }
 
-void StatisticsLogger::logStudentDropped(const std::shared_ptr<bdss::core::Student>&) {
-    ++droppedCount_;
+void StatisticsLogger::addQueueWait(double seconds) {
+    totalQueueWait_ += seconds;
+    ++queueWaitSamples_;
+}
+
+void StatisticsLogger::addSeatWait(double seconds) {
+    totalSeatWait_ += seconds;
+    ++seatWaitSamples_;
 }
 
 void StatisticsLogger::recordTick(const TickRecord& record) {
-    tickRecords_.push_back(record);
+    records_.push_back(record);
 }
 
-void StatisticsLogger::reset() {
-    generatedCount_ = 0;
-    finishedCount_ = 0;
-    droppedCount_ = 0;
-    takeawayCount_ = 0;
-    preferenceHitCount_ = 0;
-    totalQueueWait_ = 0;
-    totalSeatWait_ = 0;
-    totalServiceTime_ = 0;
-    totalDiningTime_ = 0;
-    totalSystemTime_ = 0;
-    tickRecords_.clear();
+const std::vector<TickRecord>& StatisticsLogger::records() const {
+    return records_;
 }
 
-SummaryStats StatisticsLogger::getSummary() const {
-    SummaryStats summary;
-    summary.generatedStudents = generatedCount_;
-    summary.finishedStudents = finishedCount_;
-    summary.droppedStudents = droppedCount_;
-    summary.takeawayStudents = takeawayCount_;
+Summary StatisticsLogger::summary() const {
+    Summary s;
+    s.generatedStudents = generatedStudents_;
+    s.averageQueueWait = queueWaitSamples_ > 0 ? totalQueueWait_ / queueWaitSamples_ : 0.0;
+    s.averageSeatWait = seatWaitSamples_ > 0 ? totalSeatWait_ / seatWaitSamples_ : 0.0;
 
-    if (!tickRecords_.empty()) {
-        summary.maxQueueLength = std::max_element(tickRecords_.begin(), tickRecords_.end(), [](const auto& a, const auto& b) {
-            return a.totalQueueLength < b.totalQueueLength;
-        })->totalQueueLength;
-        summary.maxWaitingForSeat = std::max_element(tickRecords_.begin(), tickRecords_.end(), [](const auto& a, const auto& b) {
-            return a.waitingForSeatCount < b.waitingForSeatCount;
-        })->waitingForSeatCount;
-        const double totalUtil = std::accumulate(tickRecords_.begin(), tickRecords_.end(), 0.0, [](double total, const auto& record) {
-            return total + record.seatUtilization;
-        });
-        summary.averageSeatUtilization = totalUtil / static_cast<double>(tickRecords_.size());
+    if (!records_.empty()) {
+        const auto& last = records_.back();
+        s.finishedStudents = last.finishedStudents;
+        s.droppedStudents = last.droppedStudents;
+        s.takeawayStudents = last.takeawayStudents;
+
+        double seatUtilizationTotal = 0.0;
+        for (const auto& r : records_) {
+            seatUtilizationTotal += r.seatUtilization;
+            if (r.totalQueueLength > s.maxQueueLength) {
+                s.maxQueueLength = r.totalQueueLength;
+                s.peakQueueTime = r.time;
+            }
+            if (r.waitingForSeatCount > s.maxWaitingForSeat) {
+                s.maxWaitingForSeat = r.waitingForSeatCount;
+                s.peakSeatWaitTime = r.time;
+            }
+        }
+        s.averageSeatUtilization = seatUtilizationTotal / static_cast<double>(records_.size());
     }
 
-    summary.averageQueueWait = safeAverage(totalQueueWait_, finishedCount_);
-    summary.averageSeatWait = safeAverage(totalSeatWait_, finishedCount_);
-    summary.averageServiceTime = safeAverage(totalServiceTime_, finishedCount_);
-    summary.averageDiningTime = safeAverage(totalDiningTime_, finishedCount_);
-    summary.averageTotalSystemTime = safeAverage(totalSystemTime_, finishedCount_);
-    summary.preferenceHitRate = generatedCount_ <= 0 ? 0.0 : static_cast<double>(preferenceHitCount_) / static_cast<double>(generatedCount_);
-    return summary;
-}
+    if (s.generatedStudents > 0) {
+        s.finishRate = static_cast<double>(s.finishedStudents) / s.generatedStudents;
+        s.dropRate = static_cast<double>(s.droppedStudents) / s.generatedStudents;
+    }
 
-void StatisticsLogger::exportCsv(const std::filesystem::path& filePath) const {
-    std::ofstream output(filePath);
-    if (!output) {
-        throw std::runtime_error("Cannot write CSV file: " + filePath.string());
-    }
-    output << "time,total_queue_length,waiting_for_seat_count,occupied_seats,cleaning_seats,total_seats,"
-              "finished_students,dropped_students,takeaway_students,in_system_students,seat_utilization,"
-              "window_queue_lengths,window_served_counts\n";
-    output << std::fixed << std::setprecision(4);
-    for (const auto& record : tickRecords_) {
-        output << record.time << ','
-               << record.totalQueueLength << ','
-               << record.waitingForSeatCount << ','
-               << record.occupiedSeats << ','
-               << record.cleaningSeats << ','
-               << record.totalSeats << ','
-               << record.finishedStudents << ','
-               << record.droppedStudents << ','
-               << record.takeawayStudents << ','
-               << record.inSystemStudents << ','
-               << record.seatUtilization << ','
-               << '"' << joinInts(record.windowQueueLengths) << "\","
-               << '"' << joinInts(record.windowServedCounts) << "\"\n";
-    }
+    return s;
 }
 
 std::string StatisticsLogger::summaryText() const {
-    const SummaryStats summary = getSummary();
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1);
-    oss << "generated_students=" << summary.generatedStudents << '\n'
-        << "finished_students=" << summary.finishedStudents << '\n'
-        << "dropped_students=" << summary.droppedStudents << '\n'
-        << "takeaway_students=" << summary.takeawayStudents << '\n'
-        << "max_queue_length=" << summary.maxQueueLength << '\n'
-        << "max_waiting_for_seat=" << summary.maxWaitingForSeat << '\n'
-        << "average_queue_wait_seconds=" << summary.averageQueueWait << '\n'
-        << "average_seat_wait_seconds=" << summary.averageSeatWait << '\n'
-        << "average_service_time_seconds=" << summary.averageServiceTime << '\n'
-        << "average_dining_time_seconds=" << summary.averageDiningTime << '\n'
-        << "average_total_system_time_seconds=" << summary.averageTotalSystemTime << '\n'
-        << "average_seat_utilization_percent=" << summary.averageSeatUtilization * 100.0 << '\n'
-        << "preference_hit_rate_percent=" << summary.preferenceHitRate * 100.0 << '\n';
-    return oss.str();
+    const auto s = summary();
+    std::ostringstream out;
+    out << "Summary\n"
+        << "  Generated students: " << s.generatedStudents << '\n'
+        << "  Finished students: " << s.finishedStudents << '\n'
+        << "  Dropped students: " << s.droppedStudents << '\n'
+        << "  Takeaway students: " << s.takeawayStudents << '\n'
+        << "  Finish rate: " << percent(s.finishRate) << '\n'
+        << "  Drop rate: " << percent(s.dropRate) << '\n'
+        << "  Max queue length: " << s.maxQueueLength << " at " << s.peakQueueTime << "s\n"
+        << "  Max waiting for seat: " << s.maxWaitingForSeat << " at " << s.peakSeatWaitTime << "s\n"
+        << "  Average queue wait: " << std::fixed << std::setprecision(1) << s.averageQueueWait << "s\n"
+        << "  Average seat wait: " << std::fixed << std::setprecision(1) << s.averageSeatWait << "s\n"
+        << "  Average seat utilization: " << percent(s.averageSeatUtilization) << '\n';
+    return out.str();
+}
+
+void StatisticsLogger::exportCsv(const std::filesystem::path& path) const {
+    std::ofstream output(path);
+    if (!output) {
+        throw std::runtime_error("Cannot write CSV file: " + path.string());
+    }
+
+    output << "time,total_queue_length,waiting_for_seat_count,occupied_seats,cleaning_seats,total_seats,"
+              "finished_students,dropped_students,takeaway_students,in_system_students,seat_utilization,"
+              "window_queue_lengths,window_served_counts\n";
+
+    output << std::fixed << std::setprecision(4);
+    for (const auto& r : records_) {
+        output << r.time << ','
+               << r.totalQueueLength << ','
+               << r.waitingForSeatCount << ','
+               << r.occupiedSeats << ','
+               << r.cleaningSeats << ','
+               << r.totalSeats << ','
+               << r.finishedStudents << ','
+               << r.droppedStudents << ','
+               << r.takeawayStudents << ','
+               << r.inSystemStudents << ','
+               << r.seatUtilization << ','
+               << '"' << joinInts(r.windowQueueLengths) << '"' << ','
+               << '"' << joinInts(r.windowServedCounts) << '"' << '\n';
+    }
 }
 
 } // namespace bdss::utils

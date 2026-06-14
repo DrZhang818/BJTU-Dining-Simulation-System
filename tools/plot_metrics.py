@@ -1,62 +1,49 @@
 #!/usr/bin/env python3
-"""Plot BDSS CSV metrics.
+"""Plot common BDSS CSV metrics.
 
 Usage:
-    python tools/plot_metrics.py simulation_log.csv --out metrics.png
+  python tools/plot_metrics.py simulation_log.csv --out charts
 """
-
-from __future__ import annotations
 
 import argparse
 import csv
 from pathlib import Path
 
-
-def read_series(path: Path):
-    time = []
-    total_queue = []
-    waiting_for_seat = []
-    seat_utilization = []
-    with path.open(newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            time.append(int(row["time"]))
-            total_queue.append(int(row["total_queue_length"]))
-            waiting_for_seat.append(int(row["waiting_for_seat_count"]))
-            seat_utilization.append(float(row["seat_utilization"]) * 100.0)
-    return time, total_queue, waiting_for_seat, seat_utilization
+import matplotlib.pyplot as plt
 
 
-def main() -> int:
+def read_rows(path: Path):
+    with path.open(newline='', encoding='utf-8') as f:
+        return list(csv.DictReader(f))
+
+
+def plot_metric(rows, key: str, title: str, out_dir: Path):
+    times = [int(r['time']) / 60 for r in rows]
+    values = [float(r[key]) for r in rows]
+    plt.figure(figsize=(9, 4.8))
+    plt.plot(times, values)
+    plt.title(title)
+    plt.xlabel('Time (minutes)')
+    plt.ylabel(key)
+    plt.tight_layout()
+    out_path = out_dir / f'{key}.png'
+    plt.savefig(out_path, dpi=160)
+    plt.close()
+    print(out_path)
+
+
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("csv", type=Path)
-    parser.add_argument("--out", type=Path, default=Path("bdss_metrics.png"))
+    parser.add_argument('csv_path', type=Path)
+    parser.add_argument('--out', type=Path, default=Path('charts'))
     args = parser.parse_args()
 
-    import matplotlib.pyplot as plt
-
-    time, total_queue, waiting_for_seat, seat_utilization = read_series(args.csv)
-    if not time:
-        raise SystemExit("CSV has no records")
-
-    fig, ax1 = plt.subplots(figsize=(11, 6))
-    ax1.plot(time, total_queue, label="Total queue")
-    ax1.plot(time, waiting_for_seat, label="Waiting for seat")
-    ax1.set_xlabel("Simulation time / s")
-    ax1.set_ylabel("Students")
-    ax1.grid(True, alpha=0.3)
-
-    ax2 = ax1.twinx()
-    ax2.plot(time, seat_utilization, label="Seat utilization (%)", linestyle="--")
-    ax2.set_ylabel("Seat utilization / %")
-
-    lines = ax1.get_lines() + ax2.get_lines()
-    ax1.legend(lines, [line.get_label() for line in lines], loc="upper right")
-    fig.tight_layout()
-    fig.savefig(args.out, dpi=160)
-    print(f"Saved {args.out}")
-    return 0
+    args.out.mkdir(parents=True, exist_ok=True)
+    rows = read_rows(args.csv_path)
+    plot_metric(rows, 'total_queue_length', 'Total queue length over time', args.out)
+    plot_metric(rows, 'waiting_for_seat_count', 'Students waiting for seats over time', args.out)
+    plot_metric(rows, 'seat_utilization', 'Seat utilization over time', args.out)
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == '__main__':
+    main()
